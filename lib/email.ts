@@ -1,11 +1,16 @@
 import nodemailer from 'nodemailer';
 
 export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
-  const host = process.env.SMTP_HOST;
+  const brevoApiKey =
+    process.env.BREVO_API_KEY ||
+    process.env.SMTP_PASS;
+
+  const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
   const port = Number(process.env.SMTP_PORT) || 587;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || `"NoteMart Verification" <${user || 'no-reply@notemart.edu'}>`;
+  const user = process.env.SMTP_USER || 'vikashkumar9027@gmail.com';
+  const pass = process.env.SMTP_PASS || brevoApiKey;
+  const fromEmail = process.env.SMTP_FROM_EMAIL || 'support@notemart.edu';
+  const fromName = process.env.SMTP_FROM_NAME || 'NoteMart Verification';
 
   const htmlTemplate = `
     <!DOCTYPE html>
@@ -22,7 +27,7 @@ export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
           .otp-box { background-color: #f1f5f9; border: 2px dashed #6366f1; border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 24px; }
           .otp-code { font-size: 36px; font-weight: 900; letter-spacing: 8px; color: #4f46e5; font-family: monospace; }
           .expiry { font-size: 12px; color: #64748b; margin-top: 8px; font-weight: 600; }
-          .footer { border-t: 1px solid #f1f5f9; pt: 16px; text-align: center; font-size: 11px; color: #94a3b8; line-height: 1.5; }
+          .footer { border-top: 1px solid #f1f5f9; padding-top: 16px; text-align: center; font-size: 11px; color: #94a3b8; line-height: 1.5; }
         </style>
       </head>
       <body>
@@ -38,7 +43,7 @@ export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
             <div class="expiry">⏱️ Valid for 10 minutes. Do not share with anyone.</div>
           </div>
 
-          <div className="footer">
+          <div class="footer">
             <p>This automated message was sent by NoteMart Student Notes Marketplace.<br>If you did not request this OTP, please ignore this email.</p>
           </div>
         </div>
@@ -46,21 +51,49 @@ export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
     </html>
   `;
 
-  // Check if SMTP credentials are provided
+  // 1. Try Brevo Transactional Email v3 API first (fastest & reliable on Vercel/Render)
+  if (brevoApiKey && brevoApiKey.startsWith('xsmtpsib-')) {
+    try {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'api-key': brevoApiKey,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: fromName, email: fromEmail },
+          to: [{ email: toEmail }],
+          subject: `🔐 Your NoteMart Verification OTP is ${otpCode}`,
+          htmlContent: htmlTemplate,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[BREVO API SUCCESS] Live OTP Email ${otpCode} sent to ${toEmail} (MessageId: ${data.messageId})`);
+        return { success: true, mode: 'live', email: toEmail, messageId: data.messageId };
+      } else {
+        const errorText = await response.text();
+        console.warn(`[BREVO API WARNING] ${response.status}: ${errorText}. Falling back to Nodemailer SMTP...`);
+      }
+    } catch (apiErr) {
+      console.warn(`[BREVO API FETCH ERROR] Falling back to Nodemailer SMTP:`, apiErr);
+    }
+  }
+
+  // 2. Nodemailer SMTP Fallback
   if (host && user && pass) {
     try {
       const transporter = nodemailer.createTransport({
         host,
         port,
         secure: port === 465,
-        auth: {
-          user,
-          pass,
-        },
+        auth: { user, pass },
       });
 
       await transporter.sendMail({
-        from,
+        from: `"${fromName}" <${fromEmail}>`,
         to: toEmail,
         subject: `🔐 Your NoteMart Verification OTP is ${otpCode}`,
         html: htmlTemplate,
@@ -71,15 +104,13 @@ export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'SMTP dispatch error';
       console.error(`[SMTP ERROR] Failed to send email to ${toEmail}: ${errorMessage}`);
-      return { success: false, error: errorMessage };
     }
   }
 
-  // Fallback Mode if SMTP is not configured in .env.local
+  // 3. Fallback Simulation Mode (Terminal Log)
   console.log(`\n======================================================`);
-  console.log(`[OTP SIMULATION / LOCAL MODE] Target Email: ${toEmail}`);
+  console.log(`[OTP SIMULATION MODE] Target Email: ${toEmail}`);
   console.log(`[REAL OTP GENERATED]: ${otpCode}`);
-  console.log(`[TO ENABLE REAL SMTP]: Set SMTP_HOST, SMTP_USER, SMTP_PASS in .env.local`);
   console.log(`======================================================\n`);
 
   return {
@@ -87,6 +118,5 @@ export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
     mode: 'simulation',
     email: toEmail,
     otpCode,
-    message: 'OTP generated. Configure SMTP credentials in .env.local to send live emails.',
   };
 }
