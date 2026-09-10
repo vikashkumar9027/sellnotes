@@ -1,15 +1,21 @@
 import nodemailer from 'nodemailer';
 
 export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
-  const brevoApiKey =
-    process.env.BREVO_API_KEY ||
-    process.env.SMTP_PASS;
+  const brevoApiKey = process.env.BREVO_API_KEY || '';
+  const brevoSmtpKey = process.env.BREVO_SMTP_KEY || process.env.SMTP_PASS || '';
 
+  // Dedicated Brevo SMTP login is in the format xxx@smtp-brevo.com
+  const smtpLogin = process.env.BREVO_SMTP_LOGIN || process.env.SMTP_USER || '';
   const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
   const port = Number(process.env.SMTP_PORT) || 587;
-  const user = process.env.SMTP_USER || 'vikashkumar9027@gmail.com';
-  const pass = process.env.SMTP_PASS || brevoApiKey;
-  const fromEmail = process.env.SMTP_FROM_EMAIL || 'support@notemart.edu';
+  const pass = process.env.SMTP_PASS || brevoSmtpKey;
+
+  // The verified sender on Brevo/Gmail must match the registered email
+  const verifiedSenderEmail =
+    process.env.SMTP_VERIFIED_SENDER ||
+    (process.env.SMTP_USER && process.env.SMTP_USER.includes('@') && !process.env.SMTP_USER.endsWith('@smtp-brevo.com')
+      ? process.env.SMTP_USER
+      : 'vikashkumar9027@gmail.com');
   const fromName = process.env.SMTP_FROM_NAME || 'NoteMart Verification';
 
   const htmlTemplate = `
@@ -51,18 +57,24 @@ export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
     </html>
   `;
 
-  // 1. Try Brevo Transactional Email v3 API first (fastest & reliable on Vercel/Render)
-  if (brevoApiKey && brevoApiKey.startsWith('xsmtpsib-')) {
+  // 1. Try Brevo Transactional Email v3 REST API (Works when key starts with xkeysib-)
+  const restApiKey = brevoApiKey.startsWith('xkeysib-')
+    ? brevoApiKey
+    : pass.startsWith('xkeysib-')
+    ? pass
+    : '';
+
+  if (restApiKey) {
     try {
       const response = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: {
           'accept': 'application/json',
-          'api-key': brevoApiKey,
+          'api-key': restApiKey,
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          sender: { name: fromName, email: user || 'vikashkumar9027@gmail.com' },
+          sender: { name: fromName, email: verifiedSenderEmail },
           to: [{ email: toEmail }],
           subject: `🔐 Your NoteMart Verification OTP is ${otpCode}`,
           htmlContent: htmlTemplate,
@@ -75,42 +87,55 @@ export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
         return { success: true, mode: 'live', email: toEmail, messageId: data.messageId };
       } else {
         const errorText = await response.text();
-        console.warn(`[BREVO API WARNING] ${response.status}: ${errorText}. Falling back to Nodemailer SMTP...`);
+        console.warn(`[BREVO API WARNING] ${response.status}: ${errorText}. Falling back to SMTP...`);
       }
     } catch (apiErr) {
-      console.warn(`[BREVO API FETCH ERROR] Falling back to Nodemailer SMTP:`, apiErr);
+      console.warn(`[BREVO API FETCH ERROR] Falling back to SMTP:`, apiErr);
     }
   }
 
-  // 2. Nodemailer SMTP Fallback
-  if (host && user && pass) {
+  // 2. Nodemailer SMTP (Gmail, Brevo SMTP Relay, or Custom SMTP)
+  if (host && smtpLogin && pass) {
     try {
-      const transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user, pass },
-      });
+      const isGmail = host.includes('gmail.com') || (smtpLogin.includes('@gmail.com') && !pass.startsWith('xsmtpsib-'));
+      const transporter = isGmail
+        ? nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+              user: smtpLogin.replace(/\s+/g, ''),
+              pass: pass.replace(/\s+/g, ''),
+            },
+          })
+        : nodemailer.createTransport({
+            host,
+            port,
+            secure: port === 465,
+            auth: {
+              user: smtpLogin.trim(),
+              pass: pass.trim(),
+            },
+          });
 
-      await transporter.sendMail({
-        from: `"${fromName}" <${fromEmail}>`,
+      const info = await transporter.sendMail({
+        from: `"${fromName}" <${verifiedSenderEmail}>`,
         to: toEmail,
         subject: `🔐 Your NoteMart Verification OTP is ${otpCode}`,
         html: htmlTemplate,
       });
 
-      console.log(`[SMTP SUCCESS] Sent Real Email OTP ${otpCode} to ${toEmail}`);
-      return { success: true, mode: 'live', email: toEmail };
+      console.log(`[SMTP SUCCESS] Sent Real Email OTP ${otpCode} to ${toEmail} (${info.messageId})`);
+      return { success: true, mode: 'live', email: toEmail, messageId: info.messageId };
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'SMTP dispatch error';
       console.error(`[SMTP ERROR] Failed to send email to ${toEmail}: ${errorMessage}`);
     }
   }
 
-  // 3. Fallback Simulation Mode (Terminal Log)
+  // 3. Fallback Simulation Mode (Logged to Terminal for development)
   console.log(`\n======================================================`);
-  console.log(`[OTP SIMULATION MODE] Target Email: ${toEmail}`);
-  console.log(`[REAL OTP GENERATED]: ${otpCode}`);
+  console.log(`[OTP LOCAL DEV SIMULATION] Target: ${toEmail}`);
+  console.log(`[VERIFICATION CODE]: ${otpCode} (Valid for 5 mins)`);
+  console.log(`[REASON]: Live email dispatch pending valid credentials.`);
   console.log(`======================================================\n`);
 
   return {

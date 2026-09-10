@@ -62,14 +62,17 @@ export async function sendOtpAction(
     // 4. Dispatch real email to user's inbox
     const emailResult = await sendRealEmailOtp(cleanId, generatedOtp);
 
-    if (!emailResult.success && emailResult.mode !== 'live') {
-      console.warn(`[OTP DISPATCH WARNING] Could not send via live email provider for ${cleanId}`);
+    if (emailResult.mode === 'live') {
+      return {
+        success: true,
+        message: `A 6-digit verification code has been sent directly to ${cleanId}. Please check your inbox and spam folder. (Valid for 5 minutes)`,
+      };
     }
 
-    // 5. Secure response: NEVER reveal or hint the OTP in the frontend response
+    // 5. Fallback local simulation mode (terminal log)
     return {
       success: true,
-      message: `A 6-digit verification code was sent to ${cleanId}. Please check your inbox and spam folder. (Valid for 5 minutes)`,
+      message: `Verification code generated for ${cleanId}. (Local Mode: Brevo SMTP login requires configuration, code logged in terminal).`,
     };
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Failed to send OTP';
