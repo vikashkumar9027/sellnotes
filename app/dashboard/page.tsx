@@ -5,10 +5,12 @@ import Link from 'next/link';
 import { store } from '@/lib/store';
 import { ShoppingBag, Heart, Download, User, ArrowRight, BookOpen, Clock } from 'lucide-react';
 import { formatDate, formatPrice } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 export default function BuyerDashboardPage() {
-  const currentUserId = 'user-student-1';
-  const user = store.getUserById(currentUserId);
+  const { user: authUser } = useAuth();
+  const currentUserId = authUser?.id || 'user-student-1';
+  const user = authUser || store.getUserById(currentUserId);
   const purchases = store.getPurchasesByUser(currentUserId);
   const wishlist = store.getWishlistByUser(currentUserId);
 

@@ -20,18 +20,19 @@ import {
   GraduationCap,
 } from 'lucide-react';
 import { sendOtpAction, verifyOtpAction } from '@/actions/auth';
-import { store } from '@/lib/store';
+import { useAuth } from '@/context/AuthContext';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
+  const { setUser } = useAuth();
+  const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('email');
 
-  const [phone, setPhone] = useState('9876543210');
-  const [email, setEmail] = useState('student@notemart.edu');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
 
   const [step, setStep] = useState<'input' | 'otp'>('input');
   const [otpValues, setOtpValues] = useState(['', '', '', '', '', '']);
-  const [timer, setTimer] = useState(30);
+  const [timer, setTimer] = useState(60);
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -45,7 +46,7 @@ export default function LoginPage() {
     return () => clearInterval(interval);
   }, [step, timer]);
 
-  const identifier = loginMethod === 'phone' ? `+91 ${phone}` : email;
+  const identifier = loginMethod === 'phone' ? `+91 ${phone}` : email.trim().toLowerCase();
 
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -69,9 +70,9 @@ export default function LoginPage() {
     if (res.error) {
       setErrorMsg(res.error);
     } else {
-      setSuccessMsg(`OTP sent to ${identifier}! Use demo OTP: 123456`);
+      setSuccessMsg(res.message || `Verification code sent to ${identifier}! Valid for 5 minutes.`);
       setStep('otp');
-      setTimer(30);
+      setTimer(60);
     }
   };
 
@@ -85,10 +86,6 @@ export default function LoginPage() {
       const nextInput = document.getElementById(`otp-input-${index + 1}`);
       if (nextInput) nextInput.focus();
     }
-  };
-
-  const handleFillDemoOtp = () => {
-    setOtpValues(['1', '2', '3', '4', '5', '6']);
   };
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
@@ -109,10 +106,13 @@ export default function LoginPage() {
     if (res.error) {
       setErrorMsg(res.error);
     } else {
-      setSuccessMsg('🎉 Mobile/Email authenticated successfully! Redirecting...');
+      if (res.user) {
+        setUser(res.user);
+      }
+      setSuccessMsg('🎉 Email verified successfully! Redirecting to dashboard...');
       setTimeout(() => {
-        router.push('/dashboard');
-      }, 1200);
+        router.push(res.user?.role === 'seller' ? '/dashboard/seller' : '/dashboard');
+      }, 1000);
     }
   };
 
@@ -284,15 +284,6 @@ export default function LoginPage() {
                   />
                 ))}
               </div>
-
-              {/* DEMO AUTOFILL OTP BUTTON */}
-              <button
-                type="button"
-                onClick={handleFillDemoOtp}
-                className="w-full py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 text-amber-800 dark:text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Auto-Fill Demo OTP (123456)
-              </button>
 
               <button
                 type="submit"

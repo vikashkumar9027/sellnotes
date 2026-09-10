@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { store } from '@/lib/store';
 import NoteCard from '@/components/notes/NoteCard';
 import { Heart, BookOpen } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 export default function WishlistPage() {
-  const currentUserId = 'user-student-1';
+  const { user } = useAuth();
+  const currentUserId = user?.id || 'user-student-1';
   const wishlistItems = store.getWishlistByUser(currentUserId);
 
   return (

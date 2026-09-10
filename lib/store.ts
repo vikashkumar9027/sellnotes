@@ -5,7 +5,7 @@ import { INITIAL_CATEGORIES, MOCK_NOTES, MOCK_USERS, MOCK_REVIEWS, MOCK_PURCHASE
 export function calculateOrderAmounts(
   basePrice: number,
   gstRatePercent: number = 18,
-  platformCommissionPercent: number = 20
+  platformCommissionPercent: number = 10
 ) {
   const baseAmount = Math.max(0, Number(basePrice) || 0);
   const gstRate = Math.max(0, Number(gstRatePercent) || 0);
@@ -30,19 +30,43 @@ export function calculateOrderAmounts(
   };
 }
 
-// Global transient state for mock/local execution fallback
-let categoriesState: Category[] = [...INITIAL_CATEGORIES];
-let notesState: Note[] = [...MOCK_NOTES];
-let usersState: Profile[] = [...MOCK_USERS];
-let reviewsState: Review[] = [...MOCK_REVIEWS];
-let purchasesState: Purchase[] = [...MOCK_PURCHASES];
-let wishlistState: { id: string; user_id: string; note_id: string; created_at: string }[] = [
+// Global transient state persisted on globalThis to prevent loss on hot reloads
+const globalStore = globalThis as unknown as {
+  categoriesState?: Category[];
+  notesState?: Note[];
+  usersState?: Profile[];
+  reviewsState?: Review[];
+  purchasesState?: Purchase[];
+  wishlistState?: { id: string; user_id: string; note_id: string; created_at: string }[];
+  withdrawalsState?: Withdrawal[];
+  reportsState?: Report[];
+  notificationsState?: Notification[];
+  settingsState?: SystemSettings;
+};
+
+let categoriesState: Category[] = globalStore.categoriesState || [...INITIAL_CATEGORIES];
+let notesState: Note[] = globalStore.notesState || [...MOCK_NOTES];
+let usersState: Profile[] = globalStore.usersState || [...MOCK_USERS];
+let reviewsState: Review[] = globalStore.reviewsState || [...MOCK_REVIEWS];
+let purchasesState: Purchase[] = globalStore.purchasesState || [...MOCK_PURCHASES];
+let wishlistState: { id: string; user_id: string; note_id: string; created_at: string }[] = globalStore.wishlistState || [
   { id: 'wish-1', user_id: 'user-student-1', note_id: 'note-1', created_at: new Date().toISOString() }
 ];
-let withdrawalsState: Withdrawal[] = [...MOCK_WITHDRAWALS];
-let reportsState: Report[] = [...MOCK_REPORTS];
-let notificationsState: Notification[] = [...MOCK_NOTIFICATIONS];
-let settingsState: SystemSettings = { ...DEFAULT_SYSTEM_SETTINGS };
+let withdrawalsState: Withdrawal[] = globalStore.withdrawalsState || [...MOCK_WITHDRAWALS];
+let reportsState: Report[] = globalStore.reportsState || [...MOCK_REPORTS];
+let notificationsState: Notification[] = globalStore.notificationsState || [...MOCK_NOTIFICATIONS];
+let settingsState: SystemSettings = globalStore.settingsState || { ...DEFAULT_SYSTEM_SETTINGS, platform_commission: 10 };
+
+globalStore.categoriesState = categoriesState;
+globalStore.notesState = notesState;
+globalStore.usersState = usersState;
+globalStore.reviewsState = reviewsState;
+globalStore.purchasesState = purchasesState;
+globalStore.wishlistState = wishlistState;
+globalStore.withdrawalsState = withdrawalsState;
+globalStore.reportsState = reportsState;
+globalStore.notificationsState = notificationsState;
+globalStore.settingsState = settingsState;
 
 export const store = {
   // Categories
@@ -420,6 +444,32 @@ export const store = {
   // Users & Roles
   getUsers: () => usersState,
   getUserById: (id: string) => usersState.find((u) => u.id === id),
+  createUser: (userData: Partial<Profile> & { email: string }) => {
+    const existing = usersState.find((u) => u.email.toLowerCase() === userData.email.toLowerCase());
+    if (existing) {
+      if (userData.full_name && !existing.full_name) existing.full_name = userData.full_name;
+      if (userData.university && !existing.university) existing.university = userData.university;
+      if (userData.role && existing.role !== userData.role) existing.role = userData.role;
+      return existing;
+    }
+
+    const newUser: Profile = {
+      id: `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      email: userData.email.toLowerCase(),
+      full_name: userData.full_name || userData.email.split('@')[0],
+      role: userData.role || 'student',
+      university: userData.university || '',
+      college: userData.college || '',
+      course: userData.course || '',
+      semester: userData.semester || '',
+      avatar_url: userData.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(userData.email)}`,
+      bio: userData.bio || 'Student at NoteMart',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    usersState.push(newUser);
+    return newUser;
+  },
   updateUserProfile: (id: string, updates: Partial<Profile>) => {
     const user = usersState.find((u) => u.id === id);
     if (user) {

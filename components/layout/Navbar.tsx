@@ -3,24 +3,26 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpen, Heart, Bell, PlusCircle, Search, Menu, X, Shield, ShoppingBag, LayoutDashboard, LogOut } from 'lucide-react';
+import { BookOpen, Heart, Bell, PlusCircle, Search, Menu, X, Shield, ShoppingBag, LayoutDashboard, LogOut, LogIn, UserPlus } from 'lucide-react';
 import { store } from '@/lib/store';
+import { useAuth } from '@/context/AuthContext';
 
 export default function Navbar() {
   const pathname = usePathname();
+  const { user, logout, switchUser } = useAuth();
   const [isMounted, setIsMounted] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
-  const [activeUser, setActiveUser] = useState(() => store.getUsers()[2]); // Default demo student
+  const activeUser = user || store.getUsers()[2]; // Fallback preview profile
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const notifications = isMounted ? store.getNotificationsByUser(activeUser.id) : [];
+  const notifications = isMounted && user ? store.getNotificationsByUser(user.id) : [];
   const unreadCount = notifications.filter((n) => !n.is_read).length;
-  const wishlistItems = isMounted ? store.getWishlistByUser(activeUser.id) : [];
+  const wishlistItems = isMounted && user ? store.getWishlistByUser(user.id) : [];
 
   const navLinks = [
     { name: 'Home', href: '/' },
@@ -121,10 +123,10 @@ export default function Navbar() {
               </Link>
             </div>
 
-            {/* Role Switcher for Demo */}
+            {/* Role Switcher for Testing */}
             <div className="hidden lg:flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-1 text-xs font-medium text-slate-600 dark:text-slate-300">
               <button
-                onClick={() => setActiveUser(store.getUsers()[2])}
+                onClick={() => switchUser('user-student-1')}
                 className={`px-2 py-1 rounded-md transition-all ${
                   activeUser.role === 'student' ? 'bg-white dark:bg-slate-700 shadow-xs text-indigo-600 font-bold' : ''
                 }`}
@@ -132,7 +134,7 @@ export default function Navbar() {
                 Student
               </button>
               <button
-                onClick={() => setActiveUser(store.getUsers()[0])}
+                onClick={() => switchUser('user-seller-1')}
                 className={`px-2 py-1 rounded-md transition-all ${
                   activeUser.role === 'seller' ? 'bg-white dark:bg-slate-700 shadow-xs text-indigo-600 font-bold' : ''
                 }`}
@@ -140,7 +142,7 @@ export default function Navbar() {
                 Seller
               </button>
               <button
-                onClick={() => setActiveUser(store.getUsers()[3])}
+                onClick={() => switchUser('user-admin-1')}
                 className={`px-2 py-1 rounded-md transition-all ${
                   activeUser.role === 'admin' ? 'bg-white dark:bg-slate-700 shadow-xs text-indigo-600 font-bold' : ''
                 }`}
@@ -210,13 +212,17 @@ export default function Navbar() {
                   )}
 
                   <div className="border-t border-slate-100 dark:border-slate-800 mt-1 pt-1">
-                    <Link
-                      href="/login"
-                      className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await logout();
+                        window.location.href = '/login';
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-left transition-colors"
                     >
                       <LogOut className="w-4 h-4" />
                       Log out
-                    </Link>
+                    </button>
                   </div>
                 </div>
               )}

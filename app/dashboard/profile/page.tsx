@@ -4,10 +4,12 @@ import React, { useState } from 'react';
 import { store } from '@/lib/store';
 import { updateProfileAction } from '@/actions/auth';
 import { User, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 export default function ProfilePage() {
-  const currentUserId = 'user-student-1';
-  const user = store.getUserById(currentUserId);
+  const { user: authUser } = useAuth();
+  const currentUserId = authUser?.id || 'user-student-1';
+  const user = authUser || store.getUserById(currentUserId);
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');

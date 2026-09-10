@@ -3,6 +3,7 @@
 import { getRazorpayInstance, verifyRazorpaySignature } from '@/lib/razorpay';
 import { store, calculateOrderAmounts } from '@/lib/store';
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
 
 export async function createRazorpayOrderAction({
   noteId,
@@ -26,12 +27,12 @@ export async function createRazorpayOrderAction({
       return { error: 'You already own this note' };
     }
 
-    // 2. Perform all financial calculations strictly server-side
+    // 2. Perform all financial calculations strictly server-side (10% platform fee, 90% seller net)
     const settings = store.getSettings();
     const financial = calculateOrderAmounts(
       note.price,
       settings.gst_rate ?? 18,
-      settings.platform_commission ?? 20
+      settings.platform_commission ?? 10
     );
 
     // 3. Smallest currency unit for Razorpay API (paise = total rupees * 100)
@@ -56,19 +57,16 @@ export async function createRazorpayOrderAction({
     let order;
     try {
       order = await razorpay.orders.create(orderOptions);
-    } catch {
-      // Demo order creation fallback if credentials not set
-      order = {
-        id: `order_demo_${Date.now()}`,
-        amount: amountInPaise,
-        currency: 'INR',
-        receipt: orderOptions.receipt,
-      };
+    } catch (orderErr: unknown) {
+      const msg = orderErr instanceof Error ? orderErr.message : 'Unknown Razorpay error';
+      console.error('[RAZORPAY ORDER ERROR]', msg);
+      return { error: `Razorpay order creation failed: ${msg}. Please verify your test credentials.` };
     }
 
     return {
       success: true,
       orderId: order.id,
+      amountInPaise,
       baseAmount: financial.baseAmount,
       gstRate: financial.gstRate,
       gstAmount: financial.gstAmount,
@@ -77,7 +75,7 @@ export async function createRazorpayOrderAction({
       platformFeeAmount: financial.platformFeeAmount,
       sellerNetAmount: financial.sellerNetAmount,
       currency: 'INR',
-      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_notemart_demo',
+      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '',
       noteTitle: note.title,
     };
   } catch (err: unknown) {
@@ -97,9 +95,19 @@ export async function verifyPaymentAction({
   razorpay_payment_id: string;
   razorpay_signature: string;
   noteId: string;
-  buyerId: string;
+  buyerId?: string;
 }) {
   try {
+    let effectiveBuyerId = buyerId;
+    if (!effectiveBuyerId) {
+      const cookieStore = await cookies();
+      effectiveBuyerId = cookieStore.get('notemart_user_id')?.value;
+    }
+
+    if (!effectiveBuyerId) {
+      return { error: 'Buyer session not found. Please log in.' };
+    }
+
     const isValid = verifyRazorpaySignature({
       order_id: razorpay_order_id,
       payment_id: razorpay_payment_id,
@@ -112,7 +120,7 @@ export async function verifyPaymentAction({
 
     // Record purchase with server-calculated amounts (idempotent)
     const purchase = store.recordPurchase({
-      buyerId,
+      buyerId: effectiveBuyerId,
       noteId,
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
@@ -120,6 +128,10 @@ export async function verifyPaymentAction({
 
     revalidatePath('/dashboard/purchases');
     revalidatePath(`/notes/${noteId}`);
+    if (purchase.note?.slug) {
+      revalidatePath(`/notes/${purchase.note.slug}`);
+      revalidatePath(`/notes/${purchase.note.slug}/read`);
+    }
     revalidatePath('/dashboard/seller/sales');
     revalidatePath('/dashboard/seller/earnings');
     revalidatePath('/admin');

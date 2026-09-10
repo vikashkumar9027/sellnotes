@@ -6,9 +6,11 @@ import { store } from '@/lib/store';
 import { Download, BookOpen, ArrowRight } from 'lucide-react';
 import { formatDate, formatPrice } from '@/lib/utils';
 import { getSecureDownloadUrl } from '@/actions/notes';
+import { useAuth } from '@/context/AuthContext';
 
 export default function PurchasesPage() {
-  const currentUserId = 'user-student-1';
+  const { user } = useAuth();
+  const currentUserId = user?.id || 'user-student-1';
   const purchases = store.getPurchasesByUser(currentUserId);
 
   const handleDownload = async (noteId: string, title: string) => {

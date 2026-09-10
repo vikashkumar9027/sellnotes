@@ -9,15 +9,17 @@ import PurchaseButton from '@/components/notes/PurchaseButton';
 import { formatPrice, formatFileSize, formatDate } from '@/lib/utils';
 import { Star, Download, Eye, GraduationCap, ShieldCheck, Heart, Flag, Share2, BookOpen, User, CheckCircle2, AlertTriangle, Send } from 'lucide-react';
 import { addReviewAction, reportNoteAction } from '@/actions/notes';
+import { useAuth } from '@/context/AuthContext';
 
 export default function NoteDetailsPage() {
   const params = useParams();
   const slug = params.slug as string;
+  const { user } = useAuth();
 
-  const currentUserId = 'user-student-1';
+  const currentUserId = user?.id || '';
   const note = store.getNoteBySlug(slug);
 
-  const [isWishlisted, setIsWishlisted] = useState(() => note ? store.isInWishlist(currentUserId, note.id) : false);
+  const [isWishlisted, setIsWishlisted] = useState(() => (note && currentUserId) ? store.isInWishlist(currentUserId, note.id) : false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState('copyright_violation');
   const [reportDesc, setReportDesc] = useState('');

@@ -11,7 +11,7 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const [commission, setCommission] = useState(currentSettings.platform_commission ?? 20);
+  const [commission, setCommission] = useState(currentSettings.platform_commission ?? 10);
   const [gstRate, setGstRate] = useState(currentSettings.gst_rate ?? 18);
   const [minPrice, setMinPrice] = useState(currentSettings.min_note_price ?? 0);
   const [maxPrice, setMaxPrice] = useState(currentSettings.max_note_price ?? 2000);

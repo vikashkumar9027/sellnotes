@@ -26,9 +26,13 @@ export const verifyRazorpaySignature = ({
 }): boolean => {
   const key_secret = process.env.RAZORPAY_KEY_SECRET || '';
 
-  // If secret is placeholder in demo mode, validate demo signatures smoothly
-  if (!key_secret || key_secret === 'demo_razorpay_secret' || key_secret === 'secret_placeholder') {
-    return true;
+  if (!key_secret) {
+    console.error('Razorpay key secret is not configured.');
+    return false;
+  }
+
+  if (!order_id || !payment_id || !signature) {
+    return false;
   }
 
   try {

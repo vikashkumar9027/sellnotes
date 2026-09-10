@@ -40,7 +40,7 @@ export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
           
           <div class="otp-box">
             <div class="otp-code">${otpCode}</div>
-            <div class="expiry">⏱️ Valid for 10 minutes. Do not share with anyone.</div>
+            <div class="expiry">⏱️ Valid for 5 minutes. Do not share with anyone.</div>
           </div>
 
           <div class="footer">
@@ -62,7 +62,7 @@ export async function sendRealEmailOtp(toEmail: string, otpCode: string) {
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          sender: { name: fromName, email: fromEmail },
+          sender: { name: fromName, email: user || 'vikashkumar9027@gmail.com' },
           to: [{ email: toEmail }],
           subject: `🔐 Your NoteMart Verification OTP is ${otpCode}`,
           htmlContent: htmlTemplate,

@@ -6,13 +6,16 @@ import { Heart, Download, Star, BookOpen, GraduationCap, ArrowRight, Eye, Shield
 import { Note } from '@/types';
 import { formatPrice, formatFileSize } from '@/lib/utils';
 import { store } from '@/lib/store';
+import { useAuth } from '@/context/AuthContext';
 
 interface NoteCardProps {
   note: Note;
   currentUserId?: string;
 }
 
-export default function NoteCard({ note, currentUserId = 'user-student-1' }: NoteCardProps) {
+export default function NoteCard({ note, currentUserId: propUserId }: NoteCardProps) {
+  const { user } = useAuth();
+  const currentUserId = propUserId || user?.id || 'user-student-1';
   const [isWishlisted, setIsWishlisted] = useState(() => store.isInWishlist(currentUserId, note.id));
 
   const handleWishlistToggle = (e: React.MouseEvent) => {
