@@ -95,12 +95,17 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
       }
 
       // 3. Configure Razorpay Checkout Modal
+      const keyId = orderRes.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+      const isTestMode = keyId.startsWith('rzp_test_');
+
       const options = {
-        key: orderRes.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        key: keyId,
         amount: orderRes.amountInPaise,
         currency: orderRes.currency || 'INR',
         name: 'NoteMart',
-        description: `Handwritten Note: ${note.title} (Inc. ${orderRes.gstRate}% GST)`,
+        description: isTestMode
+          ? `[TEST MODE - Do not use real PhonePe/GPay] Select Cards or Netbanking and click Success`
+          : `Handwritten Note: ${note.title} (Inc. ${orderRes.gstRate}% GST)`,
         image: '/logo.png',
         order_id: orderRes.orderId,
         handler: async function (response: {
@@ -211,6 +216,17 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
           <span className="text-indigo-600 dark:text-indigo-400">{formatPrice(financial.buyerTotalAmount)}</span>
         </div>
       </div>
+
+      {process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.startsWith('rzp_test_') && (
+        <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+          <div className="font-black flex items-center gap-1.5 text-amber-900 dark:text-amber-200">
+            <span>🧪</span> Razorpay Test Mode Active
+          </div>
+          <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-normal">
+            Real UPI apps (PhonePe/GPay) do not work in Test Mode. In the checkout popup, choose <strong>Netbanking</strong> or <strong>Card</strong> and click <strong>Success</strong>, or enter UPI ID <code className="bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded font-mono font-bold">success@razorpay</code>. To accept real PhonePe payments, connect a Live Key.
+          </p>
+        </div>
+      )}
 
       <p className="text-[10px] text-slate-400 text-center flex items-center justify-center gap-1">
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
