@@ -60,7 +60,7 @@ export async function createRazorpayOrderAction({
     } catch (orderErr: unknown) {
       const msg = orderErr instanceof Error ? orderErr.message : 'Unknown Razorpay error';
       console.error('[RAZORPAY ORDER ERROR]', msg);
-      return { error: `Razorpay order creation failed: ${msg}. Please verify your test credentials.` };
+      return { error: `Razorpay order creation failed: ${msg}. Please ensure RAZORPAY_KEY_SECRET is added to Vercel Environment Variables.` };
     }
 
     return {
@@ -75,7 +75,7 @@ export async function createRazorpayOrderAction({
       platformFeeAmount: financial.platformFeeAmount,
       sellerNetAmount: financial.sellerNetAmount,
       currency: 'INR',
-      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || 'rzp_test_TYm09mHpY7NcDT',
+      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || 'rzp_live_Tb9qeGZfBaMqlH',
       noteTitle: note.title,
     };
   } catch (err: unknown) {

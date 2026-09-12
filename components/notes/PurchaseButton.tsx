@@ -95,7 +95,7 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
       }
 
       // 3. Configure Razorpay Checkout Modal
-      const keyId = orderRes.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TYm09mHpY7NcDT';
+      const keyId = orderRes.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_Tb9qeGZfBaMqlH';
       const isTestMode = keyId.startsWith('rzp_test_');
 
       const options = {
@@ -238,7 +238,7 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
         </div>
       </div>
 
-      {(process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TYm09mHpY7NcDT').startsWith('rzp_test_') && (
+      {(process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_Tb9qeGZfBaMqlH').startsWith('rzp_test_') && (
         <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 space-y-1">
           <div className="font-black flex items-center gap-1.5 text-amber-900 dark:text-amber-200">
             <span>🧪</span> Razorpay Test Mode Active
