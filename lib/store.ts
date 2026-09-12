@@ -49,6 +49,14 @@ let notesState: Note[] = globalStore.notesState || [...MOCK_NOTES];
 let usersState: Profile[] = globalStore.usersState || [...MOCK_USERS];
 let reviewsState: Review[] = globalStore.reviewsState || [...MOCK_REVIEWS];
 let purchasesState: Purchase[] = globalStore.purchasesState || [...MOCK_PURCHASES];
+if (typeof window !== 'undefined') {
+  try {
+    const savedPurchases = localStorage.getItem('notemart_purchases');
+    if (savedPurchases) {
+      purchasesState = JSON.parse(savedPurchases);
+    }
+  } catch {}
+}
 let wishlistState: { id: string; user_id: string; note_id: string; created_at: string }[] = globalStore.wishlistState || [
   { id: 'wish-1', user_id: 'user-student-1', note_id: 'note-1', created_at: new Date().toISOString() }
 ];
@@ -264,6 +272,12 @@ export const store = {
     };
 
     purchasesState.unshift(purchase);
+    globalStore.purchasesState = purchasesState;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('notemart_purchases', JSON.stringify(purchasesState));
+      } catch {}
+    }
     note.downloads += 1;
 
     notificationsState.unshift({
@@ -277,6 +291,17 @@ export const store = {
     });
 
     return purchase;
+  },
+
+  removePurchase: (userId: string, noteId: string) => {
+    purchasesState = purchasesState.filter((p) => !(p.buyer_id === userId && p.note_id === noteId));
+    globalStore.purchasesState = purchasesState;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('notemart_purchases', JSON.stringify(purchasesState));
+      } catch {}
+    }
+    return true;
   },
 
   // Refund Purchase Action (Idempotent)

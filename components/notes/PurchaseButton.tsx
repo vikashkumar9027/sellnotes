@@ -95,7 +95,7 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
       }
 
       // 3. Configure Razorpay Checkout Modal
-      const keyId = orderRes.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+      const keyId = orderRes.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TYm09mHpY7NcDT';
       const isTestMode = keyId.startsWith('rzp_test_');
 
       const options = {
@@ -128,6 +128,12 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
           setLoading(false);
 
           if (verifyRes.success) {
+            store.recordPurchase({
+              buyerId: effectiveBuyerId,
+              noteId: note.id,
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+            });
             setPurchased(true);
             if (onSuccess) onSuccess();
             alert(`🎉 Payment Verified! Total Paid: ${formatPrice(financial.buyerTotalAmount)} (Inc. 18% GST). Full note access unlocked!`);
@@ -174,13 +180,28 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
 
   if (purchased || note.is_free || (user && user.id === note.seller_id)) {
     return (
-      <Link
-        href={`/notes/${note.slug}/read`}
-        className="w-full py-3.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.01]"
-      >
-        <Eye className="w-5 h-5" />
-        <span>Read Online in Secure Reader</span>
-      </Link>
+      <div className="space-y-2 w-full">
+        <Link
+          href={`/notes/${note.slug}/read`}
+          className="w-full py-3.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.01]"
+        >
+          <Eye className="w-5 h-5" />
+          <span>Read Online in Secure Reader</span>
+        </Link>
+        {!note.is_free && user && user.id !== note.seller_id && (
+          <button
+            onClick={() => {
+              if (effectiveBuyerId) {
+                store.removePurchase(effectiveBuyerId, note.id);
+                setPurchased(false);
+              }
+            }}
+            className="w-full text-center text-xs text-slate-400 hover:text-indigo-600 transition-colors py-1"
+          >
+            🧪 [Test Mode] Reset purchase status to test Razorpay payment again
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -217,7 +238,7 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
         </div>
       </div>
 
-      {process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.startsWith('rzp_test_') && (
+      {(process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TYm09mHpY7NcDT').startsWith('rzp_test_') && (
         <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 space-y-1">
           <div className="font-black flex items-center gap-1.5 text-amber-900 dark:text-amber-200">
             <span>🧪</span> Razorpay Test Mode Active

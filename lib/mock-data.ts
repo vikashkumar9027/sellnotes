@@ -198,58 +198,7 @@ export const MOCK_REVIEWS: Review[] = [
   }
 ];
 
-export const MOCK_PURCHASES: Purchase[] = [
-  {
-    id: 'pur-1',
-    buyer_id: 'user-student-1',
-    seller_id: 'user-seller-1',
-    note_id: 'note-1',
-    transaction_id: 'txn-101',
-    base_amount: 49,
-    gst_rate: 18,
-    gst_amount: 8.82,
-    buyer_total_amount: 57.82,
-    platform_fee_rate: 10,
-    platform_fee_amount: 4.9,
-    seller_gross_amount: 49,
-    seller_net_amount: 44.1,
-    amount: 49,
-    platform_fee: 4.9,
-    seller_amount: 44.1,
-    status: 'paid',
-    payout_status: 'completed',
-    refund_status: 'none',
-    created_at: '2026-01-12T14:20:00Z',
-    note: MOCK_NOTES[0],
-    seller: MOCK_USERS[0],
-    buyer: MOCK_USERS[2]
-  },
-  {
-    id: 'pur-2',
-    buyer_id: 'user-student-1',
-    seller_id: 'user-seller-1',
-    note_id: 'note-gov-1',
-    transaction_id: 'txn-102',
-    base_amount: 99,
-    gst_rate: 18,
-    gst_amount: 17.82,
-    buyer_total_amount: 116.82,
-    platform_fee_rate: 10,
-    platform_fee_amount: 9.9,
-    seller_gross_amount: 99,
-    seller_net_amount: 89.1,
-    amount: 99,
-    platform_fee: 9.9,
-    seller_amount: 89.1,
-    status: 'paid',
-    payout_status: 'completed',
-    refund_status: 'none',
-    created_at: '2026-01-14T09:15:00Z',
-    note: MOCK_NOTES[1],
-    seller: MOCK_USERS[0],
-    buyer: MOCK_USERS[2]
-  }
-];
+export const MOCK_PURCHASES: Purchase[] = [];
 
 export const MOCK_WITHDRAWALS: Withdrawal[] = [
   {

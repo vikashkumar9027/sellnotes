@@ -2,16 +2,12 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
 export const getRazorpayInstance = () => {
-  const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
-  const key_secret = process.env.RAZORPAY_KEY_SECRET || '';
-
-  if (!key_id || !key_secret) {
-    console.warn('Razorpay credentials missing. Local testing mode active.');
-  }
+  const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TYm09mHpY7NcDT';
+  const key_secret = process.env.RAZORPAY_KEY_SECRET || 'HimvVH81HU3EHEQTAS5BvFrO';
 
   return new Razorpay({
-    key_id: key_id || 'rzp_test_placeholder',
-    key_secret: key_secret || 'secret_placeholder',
+    key_id,
+    key_secret,
   });
 };
 
@@ -24,7 +20,7 @@ export const verifyRazorpaySignature = ({
   payment_id: string;
   signature: string;
 }): boolean => {
-  const key_secret = process.env.RAZORPAY_KEY_SECRET || '';
+  const key_secret = process.env.RAZORPAY_KEY_SECRET || 'HimvVH81HU3EHEQTAS5BvFrO';
 
   if (!key_secret) {
     console.error('Razorpay key secret is not configured.');

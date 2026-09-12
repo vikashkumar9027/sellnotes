@@ -75,7 +75,7 @@ export async function createRazorpayOrderAction({
       platformFeeAmount: financial.platformFeeAmount,
       sellerNetAmount: financial.sellerNetAmount,
       currency: 'INR',
-      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '',
+      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || 'rzp_test_TYm09mHpY7NcDT',
       noteTitle: note.title,
     };
   } catch (err: unknown) {
