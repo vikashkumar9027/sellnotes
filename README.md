@@ -171,13 +171,25 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 ---
 
-## 🚀 Vercel Deployment Instructions
+## 🚀 1-Click Free Deployment on Vercel
 
-1. Push your repository to GitHub.
-2. Go to [Vercel Dashboard](https://vercel.com) and click **Add New -> Project**.
-3. Import your `sell notes` repository.
-4. Add all environment variables from `.env.example`.
-5. Click **Deploy**.
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvikashkumar9027%2Fsellnotes&project-name=notemart&env=NEXT_PUBLIC_APP_URL,NEXT_PUBLIC_RAZORPAY_KEY_ID,RAZORPAY_KEY_ID,RAZORPAY_KEY_SECRET,RAZORPAY_WEBHOOK_SECRET,BREVO_API_KEY,SMTP_VERIFIED_SENDER)
+
+### Deploying Manually:
+1. Push your repository to GitHub: `https://github.com/vikashkumar9027/sellnotes` (Already synced!)
+2. Go to [Vercel Dashboard](https://vercel.com) and sign in with GitHub.
+3. Click **Add New...** -> **Project**.
+4. Select **vikashkumar9027/sellnotes** from the list and click **Import**.
+5. Under **Environment Variables**, expand the tab and enter your credentials (or copy from `.env.local`):
+   - `NEXT_PUBLIC_RAZORPAY_KEY_ID`
+   - `RAZORPAY_KEY_ID`
+   - `RAZORPAY_KEY_SECRET`
+   - `RAZORPAY_WEBHOOK_SECRET`
+   - `BREVO_API_KEY` (or Gmail SMTP details)
+   - `SMTP_VERIFIED_SENDER`
+   - `NEXT_PUBLIC_APP_URL` (set to your Vercel domain e.g. `https://your-project.vercel.app`)
+6. Click **Deploy**. Vercel will build and launch your site with a free `.vercel.app` domain and free SSL!
+
 
 ---
 
