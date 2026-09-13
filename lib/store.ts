@@ -1,11 +1,38 @@
-import { Category, Note, Profile, Review, Purchase, Withdrawal, Report, Notification, SystemSettings, TransactionStatus, RefundStatus } from '@/types';
-import { INITIAL_CATEGORIES, MOCK_NOTES, MOCK_USERS, MOCK_REVIEWS, MOCK_PURCHASES, MOCK_WITHDRAWALS, MOCK_REPORTS, MOCK_NOTIFICATIONS, DEFAULT_SYSTEM_SETTINGS } from './mock-data';
+import {
+  Category,
+  Note,
+  Profile,
+  Review,
+  Purchase,
+  Withdrawal,
+  Report,
+  Notification,
+  SystemSettings,
+  Wallet,
+  WalletTransaction,
+  SellerAccount,
+  PaymentTransfer,
+  WithdrawalRequest,
+  AuditLog,
+  WebhookEventRecord,
+} from '@/types';
+import {
+  INITIAL_CATEGORIES,
+  MOCK_NOTES,
+  MOCK_USERS,
+  MOCK_REVIEWS,
+  MOCK_PURCHASES,
+  MOCK_WITHDRAWALS,
+  MOCK_REPORTS,
+  MOCK_NOTIFICATIONS,
+  DEFAULT_SYSTEM_SETTINGS,
+} from './mock-data';
 
-// Helper function for server-side financial calculations
+// Helper function for server-side financial calculations (25% default platform commission)
 export function calculateOrderAmounts(
   basePrice: number,
   gstRatePercent: number = 18,
-  platformCommissionPercent: number = 10
+  platformCommissionPercent: number = 25
 ) {
   const baseAmount = Math.max(0, Number(basePrice) || 0);
   const gstRate = Math.max(0, Number(gstRatePercent) || 0);
@@ -18,6 +45,13 @@ export function calculateOrderAmounts(
   const sellerGrossAmount = baseAmount;
   const sellerNetAmount = parseFloat((baseAmount - platformFeeAmount).toFixed(2));
 
+  // Integer paise equivalents
+  const grossPaise = Math.round(baseAmount * 100);
+  const platformFeePaise = Math.round((grossPaise * platformFeeRate) / 100);
+  const sellerNetPaise = Math.max(0, grossPaise - platformFeePaise);
+  const gstPaise = Math.round((grossPaise * gstRate) / 100);
+  const buyerTotalPaise = grossPaise + gstPaise;
+
   return {
     baseAmount,
     gstRate,
@@ -27,10 +61,16 @@ export function calculateOrderAmounts(
     platformFeeAmount,
     sellerGrossAmount,
     sellerNetAmount,
+    // Integer paise
+    grossPaise,
+    platformFeePaise,
+    sellerNetPaise,
+    gstPaise,
+    buyerTotalPaise,
   };
 }
 
-// Global transient state persisted on globalThis to prevent loss on hot reloads
+// Global transient state persisted on globalThis to prevent state loss on dev hot reloads
 const globalStore = globalThis as unknown as {
   categoriesState?: Category[];
   notesState?: Note[];
@@ -42,6 +82,13 @@ const globalStore = globalThis as unknown as {
   reportsState?: Report[];
   notificationsState?: Notification[];
   settingsState?: SystemSettings;
+  walletsState?: Record<string, Wallet>;
+  walletTransactionsState?: WalletTransaction[];
+  sellerAccountsState?: Record<string, SellerAccount>;
+  paymentTransfersState?: PaymentTransfer[];
+  withdrawalRequestsState?: WithdrawalRequest[];
+  webhookEventsState?: Record<string, WebhookEventRecord>;
+  auditLogsState?: AuditLog[];
 };
 
 let categoriesState: Category[] = globalStore.categoriesState || [...INITIAL_CATEGORIES];
@@ -49,21 +96,118 @@ let notesState: Note[] = globalStore.notesState || [...MOCK_NOTES];
 let usersState: Profile[] = globalStore.usersState || [...MOCK_USERS];
 let reviewsState: Review[] = globalStore.reviewsState || [...MOCK_REVIEWS];
 let purchasesState: Purchase[] = globalStore.purchasesState || [...MOCK_PURCHASES];
-if (typeof window !== 'undefined') {
-  try {
-    const savedPurchases = localStorage.getItem('notemart_purchases');
-    if (savedPurchases) {
-      purchasesState = JSON.parse(savedPurchases);
-    }
-  } catch {}
-}
+
 let wishlistState: { id: string; user_id: string; note_id: string; created_at: string }[] = globalStore.wishlistState || [
-  { id: 'wish-1', user_id: 'user-student-1', note_id: 'note-1', created_at: new Date().toISOString() }
+  { id: 'wish-1', user_id: 'user-student-1', note_id: 'note-1', created_at: new Date().toISOString() },
 ];
 let withdrawalsState: Withdrawal[] = globalStore.withdrawalsState || [...MOCK_WITHDRAWALS];
 let reportsState: Report[] = globalStore.reportsState || [...MOCK_REPORTS];
 let notificationsState: Notification[] = globalStore.notificationsState || [...MOCK_NOTIFICATIONS];
-let settingsState: SystemSettings = globalStore.settingsState || { ...DEFAULT_SYSTEM_SETTINGS, platform_commission: 10 };
+let settingsState: SystemSettings = globalStore.settingsState || {
+  ...DEFAULT_SYSTEM_SETTINGS,
+  platform_commission: 25,
+};
+
+// Initial Seed for Wallets & Immutable Ledgers (Stored in Integer Paise)
+const initialWallets: Record<string, Wallet> = globalStore.walletsState || {
+  'user-seller-1': {
+    id: 'wlt_user-seller-1',
+    seller_id: 'user-seller-1',
+    available_balance_paise: 37500, // ₹375.00
+    pending_balance_paise: 0,
+    total_earned_paise: 37500,       // ₹375.00
+    total_withdrawn_paise: 0,
+    currency: 'INR',
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  'user-seller-2': {
+    id: 'wlt_user-seller-2',
+    seller_id: 'user-seller-2',
+    available_balance_paise: 15000, // ₹150.00
+    pending_balance_paise: 0,
+    total_earned_paise: 15000,
+    total_withdrawn_paise: 0,
+    currency: 'INR',
+    created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+};
+
+const initialTransactions: WalletTransaction[] = globalStore.walletTransactionsState || [
+  {
+    id: 'wtx_seed_1',
+    wallet_id: 'wlt_user-seller-1',
+    seller_id: 'user-seller-1',
+    type: 'SALE_CREDIT',
+    amount_paise: 37500, // ₹375.00 (75% of ₹500 note price with 25% commission)
+    balance_before_paise: 0,
+    balance_after_paise: 37500,
+    status: 'AVAILABLE',
+    reference_id: 'pur-seed-1',
+    razorpay_order_id: 'order_test_901234',
+    razorpay_payment_id: 'pay_test_901234',
+    description: 'Note Sale: Data Structures & Algorithms Complete Master Class Notes (75% Net, 25% Commission deducted)',
+    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+    updated_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+  },
+];
+
+const initialSellerAccounts: Record<string, SellerAccount> = globalStore.sellerAccountsState || {
+  'user-seller-1': {
+    id: 'sa_user-seller-1',
+    seller_id: 'user-seller-1',
+    razorpay_account_id: 'acc_test_aarav001',
+    legal_business_name: 'Aarav Sharma',
+    business_type: 'individual',
+    contact_email: 'aarav.sharma@iitb.ac.in',
+    contact_phone: '+919876543210',
+    bank_account_number_last4: '4321',
+    bank_ifsc: 'HDFC0001234',
+    account_holder_name: 'Aarav Sharma',
+    upi_vpa: 'aarav@okaxis',
+    onboarding_status: 'VERIFIED',
+    kyc_status: 'VERIFIED',
+    bank_status: 'LINKED',
+    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+};
+
+const initialWithdrawalRequests: WithdrawalRequest[] = globalStore.withdrawalRequestsState || [
+  {
+    id: 'wth_seed_1',
+    seller_id: 'user-seller-1',
+    amount_paise: 10000, // ₹100.00
+    fee_paise: 0,
+    payout_method: 'upi',
+    payout_details: 'aarav@okaxis',
+    status: 'SUCCESS',
+    idempotency_key: 'idemp_seed_1',
+    created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
+    processed_at: new Date(Date.now() - 4 * 86400000).toISOString(),
+    updated_at: new Date(Date.now() - 4 * 86400000).toISOString(),
+  },
+];
+
+let walletsState = initialWallets;
+let walletTransactionsState = initialTransactions;
+let sellerAccountsState = initialSellerAccounts;
+let paymentTransfersState: PaymentTransfer[] = globalStore.paymentTransfersState || [];
+let withdrawalRequestsState: WithdrawalRequest[] = initialWithdrawalRequests;
+let webhookEventsState: Record<string, WebhookEventRecord> = globalStore.webhookEventsState || {};
+let auditLogsState: AuditLog[] = globalStore.auditLogsState || [
+  {
+    id: 'audit_init',
+    admin_id: 'system',
+    action: 'SYSTEM_INITIALIZATION',
+    target: 'Platform Engine',
+    ip_address: '127.0.0.1',
+    result: 'SUCCESS',
+    metadata: { platform_commission_default: '25%' },
+    created_at: new Date().toISOString(),
+  },
+];
 
 globalStore.categoriesState = categoriesState;
 globalStore.notesState = notesState;
@@ -75,6 +219,13 @@ globalStore.withdrawalsState = withdrawalsState;
 globalStore.reportsState = reportsState;
 globalStore.notificationsState = notificationsState;
 globalStore.settingsState = settingsState;
+globalStore.walletsState = walletsState;
+globalStore.walletTransactionsState = walletTransactionsState;
+globalStore.sellerAccountsState = sellerAccountsState;
+globalStore.paymentTransfersState = paymentTransfersState;
+globalStore.withdrawalRequestsState = withdrawalRequestsState;
+globalStore.webhookEventsState = webhookEventsState;
+globalStore.auditLogsState = auditLogsState;
 
 export const store = {
   // Categories
@@ -106,7 +257,7 @@ export const store = {
   },
   createNote: (noteData: Partial<Note> & { custom_category_name?: string }, sellerId: string) => {
     const seller = usersState.find((u) => u.id === sellerId) || MOCK_USERS[0];
-    
+
     let category: Category;
 
     if (noteData.custom_category_name && noteData.custom_category_name.trim()) {
@@ -120,7 +271,7 @@ export const store = {
     } else {
       category = categoriesState.find((c) => c.id === noteData.category_id) || INITIAL_CATEGORIES[0];
     }
-    
+
     const newNote: Note = {
       id: `note-${Date.now()}`,
       seller_id: sellerId,
@@ -156,7 +307,7 @@ export const store = {
 
     notesState.unshift(newNote);
 
-    const user = usersState.find(u => u.id === sellerId);
+    const user = usersState.find((u) => u.id === sellerId);
     if (user && user.role === 'student') {
       user.role = 'seller';
     }
@@ -174,9 +325,10 @@ export const store = {
         id: `notif-${Date.now()}`,
         user_id: note.seller_id,
         title: `Note ${status === 'approved' ? 'Approved 🎉' : 'Status Updated'}`,
-        message: status === 'approved'
-          ? `Your note "${note.title}" has been approved and is now live.`
-          : `Your note "${note.title}" status changed to ${status}. ${reason ? `Reason: ${reason}` : ''}`,
+        message:
+          status === 'approved'
+            ? `Your note "${note.title}" has been approved and is now live.`
+            : `Your note "${note.title}" status changed to ${status}. ${reason ? `Reason: ${reason}` : ''}`,
         type: status === 'approved' ? 'note_approved' : 'note_rejected',
         is_read: false,
         created_at: new Date().toISOString(),
@@ -200,7 +352,7 @@ export const store = {
   getPurchasesByUser: (userId: string) => purchasesState.filter((p) => p.buyer_id === userId && p.status === 'paid'),
   getPurchasesBySeller: (sellerId: string) => purchasesState.filter((p) => p.seller_id === sellerId),
   hasUserPurchased: (userId: string, noteId: string) => {
-    const note = notesState.find(n => n.id === noteId);
+    const note = notesState.find((n) => n.id === noteId);
     if (note && note.is_free) return true;
     if (note && note.seller_id === userId) return true;
     return purchasesState.some((p) => p.buyer_id === userId && p.note_id === noteId && p.status === 'paid');
@@ -221,7 +373,7 @@ export const store = {
 
     const txnId = razorpayPaymentId || `txn-${Date.now()}`;
 
-    // IDEMPOTENCY CHECK: Prevent duplicate purchase recording for same user/note or transaction
+    // IDEMPOTENCY CHECK: Prevent duplicate purchase recording
     const existing = purchasesState.find(
       (p) => (p.buyer_id === buyerId && p.note_id === noteId && p.status === 'paid') || p.transaction_id === txnId
     );
@@ -232,11 +384,11 @@ export const store = {
     const buyer = usersState.find((u) => u.id === buyerId) || MOCK_USERS[2];
     const seller = usersState.find((u) => u.id === note.seller_id) || MOCK_USERS[0];
 
-    // Server-side financial breakdown calculation
+    // Server-side financial breakdown calculation (default 25% platform commission)
     const calc = calculateOrderAmounts(
       note.price,
       settingsState.gst_rate ?? 18,
-      settingsState.platform_commission ?? 10
+      settingsState.platform_commission ?? 25
     );
 
     const purchase: Purchase = {
@@ -280,11 +432,40 @@ export const store = {
     }
     note.downloads += 1;
 
+    // Credit immutable wallet ledger
+    const wallet = store.getWallet(note.seller_id);
+    const balanceBefore = wallet.available_balance_paise;
+    const balanceAfter = balanceBefore + calc.sellerNetPaise;
+
+    const wtx: WalletTransaction = {
+      id: `wtx_sale_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      wallet_id: wallet.id,
+      seller_id: note.seller_id,
+      type: 'SALE_CREDIT',
+      amount_paise: calc.sellerNetPaise,
+      balance_before_paise: balanceBefore,
+      balance_after_paise: balanceAfter,
+      status: 'AVAILABLE',
+      reference_id: purchase.id,
+      razorpay_order_id: razorpayOrderId,
+      razorpay_payment_id: razorpayPaymentId,
+      description: `Sale of "${note.title}" (Base ₹${calc.baseAmount}, Platform fee 25%: ₹${calc.platformFeeAmount}, Seller Net: ₹${calc.sellerNetAmount})`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    store.recordWalletTransaction(wtx);
+
+    wallet.available_balance_paise = balanceAfter;
+    wallet.total_earned_paise += calc.sellerNetPaise;
+    wallet.updated_at = new Date().toISOString();
+    store.saveWallet(wallet);
+
     notificationsState.unshift({
       id: `notif-${Date.now()}`,
       user_id: note.seller_id,
       title: 'New Sale Earned! 💰',
-      message: `${buyer.full_name} purchased "${note.title}" for ₹${calc.buyerTotalAmount} (Base: ₹${calc.baseAmount} + 18% GST: ₹${calc.gstAmount}). You earned net ₹${calc.sellerNetAmount}!`,
+      message: `${buyer.full_name} purchased "${note.title}" for ₹${calc.buyerTotalAmount}. You earned net ₹${calc.sellerNetAmount}!`,
       type: 'purchase',
       is_read: false,
       created_at: new Date().toISOString(),
@@ -317,6 +498,33 @@ export const store = {
     purchase.refund_status = 'full';
     purchase.updated_at = new Date().toISOString();
 
+    // Deduct from wallet ledger
+    const sellerNetPaise = Math.round((purchase.seller_net_amount ?? purchase.seller_amount) * 100);
+    const wallet = store.getWallet(purchase.seller_id);
+    const balanceBefore = wallet.available_balance_paise;
+    const balanceAfter = Math.max(0, balanceBefore - sellerNetPaise);
+
+    const refTx: WalletTransaction = {
+      id: `wtx_ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      wallet_id: wallet.id,
+      seller_id: purchase.seller_id,
+      type: 'REFUND_DEBIT',
+      amount_paise: sellerNetPaise,
+      balance_before_paise: balanceBefore,
+      balance_after_paise: balanceAfter,
+      status: 'COMPLETED',
+      reference_id: purchase.id,
+      description: `Refund deduction: "${purchase.note?.title || 'Note'}" (${reason || 'Customer refund'})`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    store.recordWalletTransaction(refTx);
+
+    wallet.available_balance_paise = balanceAfter;
+    wallet.updated_at = new Date().toISOString();
+    store.saveWallet(wallet);
+
     notificationsState.unshift({
       id: `notif-${Date.now()}`,
       user_id: purchase.seller_id,
@@ -328,6 +536,117 @@ export const store = {
     });
 
     return purchase;
+  },
+
+  // Immutable Wallets & Transactions
+  getWallet: (sellerId: string): Wallet => {
+    if (!walletsState[sellerId]) {
+      walletsState[sellerId] = {
+        id: `wlt_${sellerId}`,
+        seller_id: sellerId,
+        available_balance_paise: 0,
+        pending_balance_paise: 0,
+        total_earned_paise: 0,
+        total_withdrawn_paise: 0,
+        currency: 'INR',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      globalStore.walletsState = walletsState;
+    }
+    return walletsState[sellerId];
+  },
+
+  saveWallet: (wallet: Wallet) => {
+    walletsState[wallet.seller_id] = wallet;
+    globalStore.walletsState = walletsState;
+  },
+
+  getAllWallets: (): Wallet[] => Object.values(walletsState),
+
+  getWalletTransactions: (sellerId?: string): WalletTransaction[] => {
+    if (sellerId) {
+      return walletTransactionsState.filter((tx) => tx.seller_id === sellerId);
+    }
+    return walletTransactionsState;
+  },
+
+  recordWalletTransaction: (tx: WalletTransaction) => {
+    walletTransactionsState.unshift(tx);
+    globalStore.walletTransactionsState = walletTransactionsState;
+  },
+
+  // Seller Accounts (Razorpay Route)
+  getSellerAccount: (sellerId: string): SellerAccount | undefined => sellerAccountsState[sellerId],
+
+  getAllSellerAccounts: (): SellerAccount[] => Object.values(sellerAccountsState),
+
+  saveSellerAccount: (account: SellerAccount) => {
+    sellerAccountsState[account.seller_id] = account;
+    globalStore.sellerAccountsState = sellerAccountsState;
+  },
+
+  // Payment Transfers (Razorpay Route)
+  recordPaymentTransfer: (transfer: PaymentTransfer) => {
+    paymentTransfersState.unshift(transfer);
+    globalStore.paymentTransfersState = paymentTransfersState;
+  },
+
+  getPaymentTransfers: (): PaymentTransfer[] => paymentTransfersState,
+
+  // Webhook Events (Idempotency)
+  recordWebhookEvent: (event: WebhookEventRecord): boolean => {
+    if (webhookEventsState[event.id]) {
+      return false; // Already processed
+    }
+    webhookEventsState[event.id] = event;
+    globalStore.webhookEventsState = webhookEventsState;
+    return true; // Newly recorded
+  },
+
+  isWebhookEventProcessed: (eventId: string): boolean => Boolean(webhookEventsState[eventId]),
+
+  // Audit Logs
+  recordAuditLog: (log: Omit<AuditLog, 'id' | 'created_at'>): AuditLog => {
+    const auditRecord: AuditLog = {
+      ...log,
+      id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      created_at: new Date().toISOString(),
+    };
+    auditLogsState.unshift(auditRecord);
+    globalStore.auditLogsState = auditLogsState;
+    return auditRecord;
+  },
+
+  getAuditLogs: (): AuditLog[] => auditLogsState,
+
+  // Withdrawal Requests
+  getWithdrawalRequests: (sellerId?: string): WithdrawalRequest[] => {
+    if (sellerId) {
+      return withdrawalRequestsState.filter((w) => w.seller_id === sellerId);
+    }
+    return withdrawalRequestsState.map((w) => ({
+      ...w,
+      seller: usersState.find((u) => u.id === w.seller_id),
+    }));
+  },
+
+  createWithdrawalRequest: (req: WithdrawalRequest): WithdrawalRequest => {
+    withdrawalRequestsState.unshift(req);
+    globalStore.withdrawalRequestsState = withdrawalRequestsState;
+    return req;
+  },
+
+  updateWithdrawalRequest: (
+    id: string,
+    updates: Partial<WithdrawalRequest>
+  ): WithdrawalRequest | undefined => {
+    const wth = withdrawalRequestsState.find((w) => w.id === id);
+    if (wth) {
+      Object.assign(wth, updates, { updated_at: new Date().toISOString() });
+      globalStore.withdrawalRequestsState = withdrawalRequestsState;
+    }
+    return wth;
   },
 
   // Wishlist
@@ -392,9 +711,9 @@ export const store = {
     return newRev;
   },
 
-  // Withdrawals
+  // Legacy Withdrawals (kept for backward compatibility with existing components)
   getWithdrawalsBySeller: (sellerId: string) => withdrawalsState.filter((w) => w.seller_id === sellerId),
-  getAllWithdrawals: () => withdrawalsState.map(w => ({ ...w, seller: usersState.find(u => u.id === w.seller_id) })),
+  getAllWithdrawals: () => withdrawalsState.map((w) => ({ ...w, seller: usersState.find((u) => u.id === w.seller_id) })),
   requestWithdrawal: (sellerId: string, amount: number, payment_method: 'upi' | 'bank_transfer', payment_details: string) => {
     const newWth: Withdrawal = {
       id: `wth-${Date.now()}`,
@@ -445,11 +764,12 @@ export const store = {
     reportsState.unshift(newReport);
     return newReport;
   },
-  getReports: () => reportsState.map((r) => ({
-    ...r,
-    reporter: usersState.find((u) => u.id === r.reporter_id),
-    note: notesState.find((n) => n.id === r.note_id),
-  })),
+  getReports: () =>
+    reportsState.map((r) => ({
+      ...r,
+      reporter: usersState.find((u) => u.id === r.reporter_id),
+      note: notesState.find((n) => n.id === r.note_id),
+    })),
   resolveReport: (reportId: string, status: Report['status'], adminResponse?: string) => {
     const r = reportsState.find((item) => item.id === reportId);
     if (r) {
@@ -515,6 +835,7 @@ export const store = {
   getSettings: () => settingsState,
   updateSettings: (newSettings: Partial<SystemSettings>) => {
     settingsState = { ...settingsState, ...newSettings };
+    globalStore.settingsState = settingsState;
     return settingsState;
   },
 };

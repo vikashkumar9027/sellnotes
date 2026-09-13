@@ -1,6 +1,6 @@
 'use server';
 
-import { getRazorpayInstance, verifyRazorpaySignature } from '@/lib/razorpay';
+import { getRazorpayInstance, verifyRazorpaySignature, createRazorpayRouteTransfer } from '@/lib/razorpay';
 import { store, calculateOrderAmounts } from '@/lib/store';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
@@ -13,7 +13,7 @@ export async function createRazorpayOrderAction({
   buyerId: string;
 }) {
   try {
-    // 1. Fetch current product price & details from server-side store
+    // 1. Fetch current product price & details strictly from server-side store
     const note = store.getNotes().find((n) => n.id === noteId);
     if (!note) {
       return { error: 'Note not found' };
@@ -27,16 +27,19 @@ export async function createRazorpayOrderAction({
       return { error: 'You already own this note' };
     }
 
-    // 2. Perform all financial calculations strictly server-side (10% platform fee, 90% seller net)
+    // 2. Perform all financial calculations strictly server-side (25% default platform fee, 75% seller net)
     const settings = store.getSettings();
+    const platformCommissionPercent = settings.platform_commission ?? 25;
+    const gstRatePercent = settings.gst_rate ?? 18;
+
     const financial = calculateOrderAmounts(
       note.price,
-      settings.gst_rate ?? 18,
-      settings.platform_commission ?? 10
+      gstRatePercent,
+      platformCommissionPercent
     );
 
-    // 3. Smallest currency unit for Razorpay API (paise = total rupees * 100)
-    const amountInPaise = Math.round(financial.buyerTotalAmount * 100);
+    // 3. Smallest currency unit for Razorpay API (integer paise = total rupees * 100)
+    const amountInPaise = financial.buyerTotalPaise;
 
     const razorpay = getRazorpayInstance();
     const orderOptions = {
@@ -46,11 +49,14 @@ export async function createRazorpayOrderAction({
       notes: {
         note_id: noteId,
         buyer_id: buyerId,
-        base_amount: String(financial.baseAmount),
-        gst_amount: String(financial.gstAmount),
-        buyer_total_amount: String(financial.buyerTotalAmount),
-        platform_fee_amount: String(financial.platformFeeAmount),
-        seller_net_amount: String(financial.sellerNetAmount),
+        seller_id: note.seller_id,
+        base_amount_rupees: String(financial.baseAmount),
+        platform_fee_rupees: String(financial.platformFeeAmount),
+        seller_net_rupees: String(financial.sellerNetAmount),
+        platform_commission_percent: String(platformCommissionPercent),
+        gross_paise: String(financial.grossPaise),
+        commission_paise: String(financial.platformFeePaise),
+        seller_paise: String(financial.sellerNetPaise),
       },
     };
 
@@ -60,8 +66,12 @@ export async function createRazorpayOrderAction({
     } catch (orderErr: unknown) {
       const msg = orderErr instanceof Error ? orderErr.message : 'Unknown Razorpay error';
       console.error('[RAZORPAY ORDER ERROR]', msg);
-      return { error: `Razorpay order creation failed: ${msg}. Please ensure RAZORPAY_KEY_SECRET is added to Vercel Environment Variables.` };
+      return {
+        error: `Razorpay order creation failed: ${msg}. Please ensure RAZORPAY_KEY_ID & RAZORPAY_KEY_SECRET are configured in environment variables.`,
+      };
     }
+
+    const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || '';
 
     return {
       success: true,
@@ -74,8 +84,11 @@ export async function createRazorpayOrderAction({
       platformFeeRate: financial.platformFeeRate,
       platformFeeAmount: financial.platformFeeAmount,
       sellerNetAmount: financial.sellerNetAmount,
+      grossPaise: financial.grossPaise,
+      commissionPaise: financial.platformFeePaise,
+      sellerNetPaise: financial.sellerNetPaise,
       currency: 'INR',
-      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || 'rzp_live_Tb9qeGZfBaMqlH',
+      keyId,
       noteTitle: note.title,
     };
   } catch (err: unknown) {
@@ -108,6 +121,7 @@ export async function verifyPaymentAction({
       return { error: 'Buyer session not found. Please log in.' };
     }
 
+    // 1. Verify Razorpay HMAC signature server-side
     const isValid = verifyRazorpaySignature({
       order_id: razorpay_order_id,
       payment_id: razorpay_payment_id,
@@ -118,7 +132,7 @@ export async function verifyPaymentAction({
       return { error: 'Payment signature verification failed. Unauthorized transaction.' };
     }
 
-    // Record purchase with server-calculated amounts (idempotent)
+    // 2. Record purchase with server-calculated 25% commission and integer paise (idempotent)
     const purchase = store.recordPurchase({
       buyerId: effectiveBuyerId,
       noteId,
@@ -126,21 +140,83 @@ export async function verifyPaymentAction({
       razorpayPaymentId: razorpay_payment_id,
     });
 
+    // 3. Razorpay Route marketplace transfer check
+    const settings = store.getSettings();
+    const sellerAccount = store.getSellerAccount(purchase.seller_id);
+    let routeTransferResult = null;
+
+    if (
+      settings.route_enabled &&
+      sellerAccount &&
+      sellerAccount.razorpay_account_id &&
+      sellerAccount.onboarding_status === 'VERIFIED'
+    ) {
+      const sellerPaise = Math.round((purchase.seller_net_amount ?? purchase.seller_amount) * 100);
+      const transferRes = await createRazorpayRouteTransfer({
+        paymentId: razorpay_payment_id,
+        sellerAccountId: sellerAccount.razorpay_account_id,
+        amountInPaise: sellerPaise,
+        notes: {
+          noteId,
+          orderId: razorpay_order_id,
+          purchaseId: purchase.id,
+        },
+      });
+
+      if (transferRes.success && transferRes.transferId) {
+        store.recordPaymentTransfer({
+          id: `pt_${Date.now()}`,
+          payment_id: razorpay_payment_id,
+          transfer_id: transferRes.transferId,
+          seller_account_id: sellerAccount.razorpay_account_id,
+          seller_id: purchase.seller_id,
+          amount_paise: sellerPaise,
+          currency: 'INR',
+          status: 'PROCESSED',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        routeTransferResult = { success: true, transferId: transferRes.transferId };
+      } else {
+        console.warn('[ROUTE TRANSFER NOTICE]', transferRes.error);
+        // Note: When Route is pending activation on Razorpay merchant account, funds remain safely in seller's wallet balance
+        store.recordPaymentTransfer({
+          id: `pt_${Date.now()}`,
+          payment_id: razorpay_payment_id,
+          seller_account_id: sellerAccount.razorpay_account_id,
+          seller_id: purchase.seller_id,
+          amount_paise: sellerPaise,
+          currency: 'INR',
+          status: 'PENDING',
+          error_code: 'ROUTE_PENDING_ACTIVATION',
+          error_description: transferRes.error,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+
     revalidatePath('/dashboard/purchases');
     revalidatePath(`/notes/${noteId}`);
     if (purchase.note?.slug) {
       revalidatePath(`/notes/${purchase.note.slug}`);
       revalidatePath(`/notes/${purchase.note.slug}/read`);
     }
+    revalidatePath('/dashboard/seller');
+    revalidatePath('/dashboard/seller/wallet');
     revalidatePath('/dashboard/seller/sales');
     revalidatePath('/dashboard/seller/earnings');
-    revalidatePath('/admin');
+    revalidatePath('/dashboard/seller/transactions');
+    revalidatePath('/super-admin/orders');
+    revalidatePath('/super-admin/ledger');
+    revalidatePath('/super-admin/dashboard');
 
     return {
       success: true,
       purchaseId: purchase.id,
       noteId,
       purchase,
+      routeTransfer: routeTransferResult,
     };
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Payment verification error';
@@ -157,10 +233,14 @@ export async function refundTransactionAction({
 }) {
   try {
     const refundedPurchase = store.refundPurchase(purchaseId, reason);
-    revalidatePath('/admin');
     revalidatePath('/dashboard/purchases');
+    revalidatePath('/dashboard/seller');
+    revalidatePath('/dashboard/seller/wallet');
     revalidatePath('/dashboard/seller/sales');
     revalidatePath('/dashboard/seller/earnings');
+    revalidatePath('/dashboard/seller/transactions');
+    revalidatePath('/super-admin/orders');
+    revalidatePath('/super-admin/ledger');
 
     return {
       success: true,

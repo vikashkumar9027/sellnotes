@@ -242,7 +242,7 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
 ];
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
-  platform_commission: 10, // 10% PLATFORM COMMISSION (90% SELLER AMOUNT)
+  platform_commission: 25, // 25% PLATFORM COMMISSION (75% SELLER AMOUNT)
   gst_rate: 18,
   min_note_price: 0,
   max_note_price: 2000,
@@ -250,7 +250,12 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   max_pdf_size_mb: 2048,
   auto_approval: true,
   maintenance_mode: false,
+  route_enabled: false,
+  settlement_delay_days: 0,
+  withdrawal_enabled: true,
+  seller_registration_enabled: true,
   website_name: 'NoteMart',
   website_logo: '/logo.png',
   support_email: 'support@notemart.edu'
 };
+

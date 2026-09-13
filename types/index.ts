@@ -183,7 +183,7 @@ export interface Notification {
 }
 
 export interface SystemSettings {
-  platform_commission: number; // percentage, e.g. 10
+  platform_commission: number; // percentage, e.g. 25
   gst_rate: number;            // percentage, e.g. 18
   min_note_price: number;
   max_note_price: number;
@@ -191,9 +191,142 @@ export interface SystemSettings {
   max_pdf_size_mb: number;
   auto_approval: boolean;
   maintenance_mode: boolean;
+  route_enabled?: boolean;
+  settlement_delay_days?: number;
+  withdrawal_enabled?: boolean;
+  seller_registration_enabled?: boolean;
   website_name: string;
   website_logo: string;
   support_email: string;
+}
+
+export type WalletTransactionType =
+  | 'SALE_CREDIT'
+  | 'WITHDRAWAL_DEBIT'
+  | 'WITHDRAWAL_REVERSAL'
+  | 'REFUND_DEBIT'
+  | 'ADJUSTMENT'
+  | 'TRANSFER_HOLD'
+  | 'TRANSFER_SETTLED';
+
+export type WalletTransactionStatus =
+  | 'PENDING'
+  | 'AVAILABLE'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'REVERSED'
+  | 'CANCELLED';
+
+export interface WalletTransaction {
+  id: string;
+  wallet_id: string;
+  seller_id: string;
+  type: WalletTransactionType;
+  amount_paise: number; // integer paise
+  balance_before_paise: number;
+  balance_after_paise: number;
+  status: WalletTransactionStatus;
+  reference_id: string;
+  razorpay_payment_id?: string;
+  razorpay_order_id?: string;
+  razorpay_transfer_id?: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Wallet {
+  id: string;
+  seller_id: string;
+  available_balance_paise: number;
+  pending_balance_paise: number;
+  total_earned_paise: number;
+  total_withdrawn_paise: number;
+  currency: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SellerOnboardingStatus =
+  | 'NOT_STARTED'
+  | 'PENDING'
+  | 'SUBMITTED'
+  | 'VERIFIED'
+  | 'REJECTED'
+  | 'SUSPENDED';
+
+export interface SellerAccount {
+  id: string;
+  seller_id: string;
+  razorpay_account_id?: string;
+  legal_business_name: string;
+  business_type: string;
+  contact_email: string;
+  contact_phone?: string;
+  bank_account_number_last4?: string;
+  bank_ifsc?: string;
+  account_holder_name?: string;
+  upi_vpa?: string;
+  onboarding_status: SellerOnboardingStatus;
+  kyc_status: string;
+  bank_status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaymentTransfer {
+  id: string;
+  payment_id: string;
+  transfer_id?: string;
+  seller_account_id: string;
+  seller_id: string;
+  amount_paise: number;
+  currency: string;
+  status: 'PENDING' | 'PROCESSED' | 'FAILED' | 'REVERSED';
+  error_code?: string;
+  error_description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WithdrawalRequest {
+  id: string;
+  seller_id: string;
+  amount_paise: number;
+  fee_paise: number;
+  payout_method: 'razorpay_route' | 'bank_transfer' | 'upi';
+  payout_details: string;
+  razorpay_payout_id?: string;
+  razorpay_transfer_id?: string;
+  status: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'REVERSED' | 'CANCELLED';
+  failure_reason?: string;
+  admin_note?: string;
+  idempotency_key: string;
+  created_at: string;
+  processed_at?: string;
+  updated_at: string;
+  seller?: Profile;
+}
+
+export interface AuditLog {
+  id: string;
+  admin_id: string;
+  action: string;
+  target?: string;
+  ip_address?: string;
+  user_agent?: string;
+  result: 'SUCCESS' | 'FAILURE';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata?: Record<string, any>;
+  created_at: string;
+}
+
+export interface WebhookEventRecord {
+  id: string;
+  event_type: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload: any;
+  processed_at: string;
 }
 
 export interface SearchFilterState {
@@ -210,3 +343,4 @@ export interface SearchFilterState {
   sortBy: 'newest' | 'popular' | 'downloads' | 'price_low' | 'price_high' | 'rating';
   page: number;
 }
+

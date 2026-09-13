@@ -238,6 +238,9 @@ export default function LoginPage() {
                       className="w-full py-3 px-4 bg-white dark:bg-slate-900 text-sm font-black focus:outline-hidden"
                     />
                   </div>
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                    💡 SMS OTP gateway is under scheduled maintenance. Please switch to <strong>Email Login</strong> to receive your 6-digit OTP instantly.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-1.5">

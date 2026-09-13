@@ -34,6 +34,9 @@ export async function sendOtpAction(
     const cleanId = identifier.trim().toLowerCase();
 
     if (!cleanId || !cleanId.includes('@')) {
+      if (cleanId.startsWith('+91') || /^\d{10}$/.test(cleanId)) {
+        return { error: 'Mobile SMS gateway is currently offline for maintenance. Please switch to Email Login to receive your instant verification OTP.' };
+      }
       return { error: 'Please enter a valid email address to receive your verification OTP.' };
     }
 
@@ -62,17 +65,24 @@ export async function sendOtpAction(
     // 4. Dispatch real email to user's inbox
     const emailResult = await sendRealEmailOtp(cleanId, generatedOtp);
 
-    if (emailResult.mode === 'live') {
+    if (emailResult.success && emailResult.mode === 'live') {
       return {
         success: true,
         message: `A 6-digit verification code has been sent directly to ${cleanId}. Please check your inbox and spam folder. (Valid for 5 minutes)`,
       };
     }
 
-    // 5. Fallback local simulation mode (terminal log)
+    if (emailResult.mode === 'simulation') {
+      return {
+        success: true,
+        message: `Verification code generated for ${cleanId}. (Local Dev Mode OTP: ${emailResult.otpCode}). Valid for 5 minutes.`,
+      };
+    }
+
     return {
-      success: true,
-      message: `Verification code generated for ${cleanId}. (Local Mode: Brevo SMTP login requires configuration, code logged in terminal).`,
+      error:
+        emailResult.error ||
+        'Unable to deliver OTP email. Please ensure your Brevo/SMTP credentials and verified sender are configured in your Vercel Project Settings.',
     };
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Failed to send OTP';

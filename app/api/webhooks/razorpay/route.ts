@@ -1,63 +1,164 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
+import { verifyRazorpayWebhookSignature } from '@/lib/razorpay';
 import { store } from '@/lib/store';
+import { WalletLedgerService } from '@/lib/wallet';
 
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
     const signature = req.headers.get('x-razorpay-signature');
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || 'whsec_notemart_demo_secret';
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
     // 1. Verify webhook signature
-    if (signature && webhookSecret) {
-      const expectedSignature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(rawBody)
-        .digest('hex');
+    if (webhookSecret) {
+      if (!signature) {
+        return NextResponse.json({ error: 'Missing x-razorpay-signature header' }, { status: 400 });
+      }
 
-      if (signature !== expectedSignature && process.env.NODE_ENV === 'production') {
+      const isValid = verifyRazorpayWebhookSignature({
+        rawBody,
+        signature,
+        secret: webhookSecret,
+      });
+
+      if (!isValid) {
+        console.error('[WEBHOOK SECURITY] Invalid Razorpay webhook signature received.');
         return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 400 });
       }
+    } else if (process.env.NODE_ENV === 'production') {
+      console.warn('[SECURITY NOTICE] RAZORPAY_WEBHOOK_SECRET is not configured in production.');
     }
 
     const payload = JSON.parse(rawBody);
     const event = payload.event;
+    // Unique webhook event identifier
+    const eventId = payload.event_id || payload.id || `evt_${event}_${Date.now()}`;
 
-    // 2. Process events idempotently
-    if (event === 'payment.captured' || event === 'order.paid') {
-      const payment = payload.payload?.payment?.entity;
-      const order = payload.payload?.order?.entity;
+    // 2. Strict idempotency guard: Do not process the same event twice
+    const isNewEvent = store.recordWebhookEvent({
+      id: eventId,
+      event_type: event,
+      payload,
+      processed_at: new Date().toISOString(),
+    });
 
-      const noteId = payment?.notes?.note_id || order?.notes?.note_id;
-      const buyerId = payment?.notes?.buyer_id || order?.notes?.buyer_id;
-      const paymentId = payment?.id || `pay_wh_${Date.now()}`;
-      const orderId = order?.id || payment?.order_id || `ord_wh_${Date.now()}`;
+    if (!isNewEvent) {
+      return NextResponse.json(
+        { success: true, event, processed: false, reason: 'Duplicate event already processed' },
+        { status: 200 }
+      );
+    }
 
-      if (noteId && buyerId) {
-        // Record purchase idempotently
-        store.recordPurchase({
-          buyerId,
-          noteId,
-          razorpayOrderId: orderId,
-          razorpayPaymentId: paymentId,
-        });
+    // 3. Dispatch specific event handlers
+    switch (event) {
+      case 'payment.captured':
+      case 'order.paid': {
+        const payment = payload.payload?.payment?.entity;
+        const order = payload.payload?.order?.entity;
+
+        const noteId = payment?.notes?.note_id || order?.notes?.note_id;
+        const buyerId = payment?.notes?.buyer_id || order?.notes?.buyer_id;
+        const paymentId = payment?.id;
+        const orderId = order?.id || payment?.order_id;
+
+        if (noteId && buyerId && paymentId) {
+          // Idempotently records purchase & credits seller wallet ledger in integer paise (25% commission)
+          store.recordPurchase({
+            buyerId,
+            noteId,
+            razorpayOrderId: orderId,
+            razorpayPaymentId: paymentId,
+          });
+        }
+        break;
       }
-    } else if (event === 'refund.processed') {
-      const refund = payload.payload?.refund?.entity;
-      const paymentId = refund?.payment_id;
 
-      if (paymentId) {
-        // Process refund idempotently
-        store.refundPurchase(paymentId, 'Razorpay Webhook Refund Event');
+      case 'transfer.processed': {
+        const transfer = payload.payload?.transfer?.entity;
+        if (transfer?.id) {
+          const transfers = store.getPaymentTransfers();
+          const record = transfers.find((t) => t.transfer_id === transfer.id);
+          if (record) {
+            record.status = 'PROCESSED';
+            record.updated_at = new Date().toISOString();
+          }
+        }
+        break;
       }
-    } else if (event === 'payment.failed') {
-      const payment = payload.payload?.payment?.entity;
-      console.log(`Payment failed notification received for payment_id: ${payment?.id}`);
+
+      case 'transfer.failed': {
+        const transfer = payload.payload?.transfer?.entity;
+        if (transfer?.id) {
+          const transfers = store.getPaymentTransfers();
+          const record = transfers.find((t) => t.transfer_id === transfer.id);
+          if (record) {
+            record.status = 'FAILED';
+            record.error_code = transfer.error_code;
+            record.error_description = transfer.error_description;
+            record.updated_at = new Date().toISOString();
+          }
+        }
+        break;
+      }
+
+      case 'refund.processed': {
+        const refund = payload.payload?.refund?.entity;
+        const paymentId = refund?.payment_id;
+
+        if (paymentId) {
+          store.refundPurchase(paymentId, 'Razorpay Webhook Refund');
+        }
+        break;
+      }
+
+      case 'payout.processed': {
+        const payout = payload.payload?.payout?.entity;
+        const payoutId = payout?.id;
+
+        if (payoutId) {
+          const withdrawals = store.getWithdrawalRequests();
+          const target = withdrawals.find((w) => w.razorpay_payout_id === payoutId || w.id === payout.reference_id);
+          if (target) {
+            target.status = 'SUCCESS';
+            target.processed_at = new Date().toISOString();
+            target.updated_at = new Date().toISOString();
+          }
+        }
+        break;
+      }
+
+      case 'payout.failed':
+      case 'payout.reversed': {
+        const payout = payload.payload?.payout?.entity;
+        const payoutId = payout?.id;
+
+        if (payoutId) {
+          const withdrawals = store.getWithdrawalRequests();
+          const target = withdrawals.find((w) => w.razorpay_payout_id === payoutId || w.id === payout.reference_id);
+          if (target && target.status !== 'REVERSED') {
+            target.status = 'REVERSED';
+            target.failure_reason = payout.failure_reason || 'Payout reversed by provider';
+            target.updated_at = new Date().toISOString();
+
+            // Reverse through immutable ledger to safely restore funds
+            WalletLedgerService.reverseWithdrawal({
+              sellerId: target.seller_id,
+              withdrawalId: target.id,
+              reason: target.failure_reason,
+            });
+          }
+        }
+        break;
+      }
+
+      default:
+        console.log(`[RAZORPAY WEBHOOK] Unhandled event received: ${event}`);
     }
 
     return NextResponse.json({ success: true, event, processed: true }, { status: 200 });
   } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : 'Webhook error';
+    const errorMessage = err instanceof Error ? err.message : 'Webhook processing error';
+    console.error('[RAZORPAY WEBHOOK ERROR]', errorMessage);
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

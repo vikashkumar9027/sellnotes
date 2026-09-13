@@ -150,13 +150,17 @@ CREATE TABLE IF NOT EXISTS public.notifications (
 -- 11. SYSTEM SETTINGS TABLE
 CREATE TABLE IF NOT EXISTS public.system_settings (
   id INT PRIMARY KEY DEFAULT 1,
-  platform_commission NUMERIC(5, 2) DEFAULT 10.00,
+  platform_commission NUMERIC(5, 2) DEFAULT 25.00,
   min_note_price NUMERIC(10, 2) DEFAULT 0.00,
   max_note_price NUMERIC(10, 2) DEFAULT 2000.00,
   min_withdrawal_amount NUMERIC(10, 2) DEFAULT 100.00,
   max_pdf_size_mb INT DEFAULT 2048,
   auto_approval BOOLEAN DEFAULT false,
   maintenance_mode BOOLEAN DEFAULT false,
+  route_enabled BOOLEAN DEFAULT false,
+  settlement_delay_days INT DEFAULT 0,
+  withdrawal_enabled BOOLEAN DEFAULT true,
+  seller_registration_enabled BOOLEAN DEFAULT true,
   website_name TEXT DEFAULT 'NoteMart',
   website_logo TEXT DEFAULT '/logo.svg',
   support_email TEXT DEFAULT 'support@notemart.edu',
@@ -165,9 +169,10 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
 );
 
 -- Insert default system settings
-INSERT INTO public.system_settings (id, platform_commission, min_note_price, max_note_price, min_withdrawal_amount, max_pdf_size_mb)
-VALUES (1, 10.00, 0.00, 2000.00, 100.00, 2048)
-ON CONFLICT (id) DO UPDATE SET max_pdf_size_mb = 2048;
+INSERT INTO public.system_settings (id, platform_commission, min_note_price, max_note_price, min_withdrawal_amount, max_pdf_size_mb, route_enabled, withdrawal_enabled)
+VALUES (1, 25.00, 0.00, 2000.00, 100.00, 2048, false, true)
+ON CONFLICT (id) DO UPDATE SET platform_commission = 25.00;
+
 
 -- INDEXES FOR PERFORMANCE
 CREATE INDEX IF NOT EXISTS idx_notes_seller ON public.notes(seller_id);
@@ -229,3 +234,135 @@ CREATE POLICY "Sellers request own withdrawal" ON public.withdrawals FOR INSERT 
 -- RLS: NOTIFICATIONS
 CREATE POLICY "Users view own notifications" ON public.notifications FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users update own notifications" ON public.notifications FOR UPDATE USING (auth.uid() = user_id);
+
+-- 12. SELLER ACCOUNTS TABLE (RAZORPAY ROUTE LINKED ACCOUNTS)
+CREATE TABLE IF NOT EXISTS public.seller_accounts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  seller_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE UNIQUE NOT NULL,
+  razorpay_account_id TEXT,
+  legal_business_name TEXT NOT NULL,
+  business_type TEXT DEFAULT 'individual',
+  contact_email TEXT NOT NULL,
+  contact_phone TEXT,
+  bank_account_number_last4 TEXT,
+  bank_ifsc TEXT,
+  account_holder_name TEXT,
+  upi_vpa TEXT,
+  onboarding_status TEXT NOT NULL DEFAULT 'NOT_STARTED' CHECK (onboarding_status IN ('NOT_STARTED', 'PENDING', 'SUBMITTED', 'VERIFIED', 'REJECTED', 'SUSPENDED')),
+  kyc_status TEXT DEFAULT 'NOT_SUBMITTED',
+  bank_status TEXT DEFAULT 'NOT_LINKED',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 13. WALLETS TABLE (INTEGER PAISE PRECISION)
+CREATE TABLE IF NOT EXISTS public.wallets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  seller_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE UNIQUE NOT NULL,
+  currency TEXT DEFAULT 'INR',
+  available_balance_paise BIGINT DEFAULT 0 NOT NULL,
+  pending_balance_paise BIGINT DEFAULT 0 NOT NULL,
+  total_earned_paise BIGINT DEFAULT 0 NOT NULL,
+  total_withdrawn_paise BIGINT DEFAULT 0 NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 14. WALLET TRANSACTIONS TABLE (IMMUTABLE FINANCIAL LEDGER)
+CREATE TABLE IF NOT EXISTS public.wallet_transactions (
+  id TEXT PRIMARY KEY,
+  wallet_id UUID REFERENCES public.wallets(id) ON DELETE CASCADE,
+  seller_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  type TEXT NOT NULL CHECK (type IN (
+    'SALE_CREDIT',
+    'WITHDRAWAL_DEBIT',
+    'WITHDRAWAL_REVERSAL',
+    'REFUND_DEBIT',
+    'ADJUSTMENT',
+    'TRANSFER_HOLD',
+    'TRANSFER_SETTLED'
+  )),
+  amount_paise BIGINT NOT NULL,
+  balance_before_paise BIGINT NOT NULL,
+  balance_after_paise BIGINT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('PENDING', 'AVAILABLE', 'COMPLETED', 'FAILED', 'REVERSED', 'CANCELLED')),
+  reference_id TEXT NOT NULL,
+  razorpay_payment_id TEXT,
+  razorpay_order_id TEXT,
+  razorpay_transfer_id TEXT,
+  description TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 15. PAYMENT TRANSFERS TABLE
+CREATE TABLE IF NOT EXISTS public.payment_transfers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  payment_id TEXT NOT NULL,
+  transfer_id TEXT UNIQUE,
+  seller_account_id TEXT NOT NULL,
+  seller_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  amount_paise BIGINT NOT NULL,
+  currency TEXT DEFAULT 'INR',
+  status TEXT DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSED', 'FAILED', 'REVERSED')),
+  error_code TEXT,
+  error_description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 16. WITHDRAWAL REQUESTS TABLE
+CREATE TABLE IF NOT EXISTS public.withdrawal_requests (
+  id TEXT PRIMARY KEY,
+  seller_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  amount_paise BIGINT NOT NULL CHECK (amount_paise > 0),
+  fee_paise BIGINT DEFAULT 0,
+  payout_method TEXT NOT NULL CHECK (payout_method IN ('razorpay_route', 'bank_transfer', 'upi')),
+  payout_details TEXT NOT NULL,
+  razorpay_payout_id TEXT,
+  razorpay_transfer_id TEXT,
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'REVERSED', 'CANCELLED')),
+  failure_reason TEXT,
+  admin_note TEXT,
+  idempotency_key TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  processed_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 17. WEBHOOK EVENTS TABLE (IDEMPOTENCY)
+CREATE TABLE IF NOT EXISTS public.webhook_events (
+  id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  processed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 18. AUDIT LOGS TABLE
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  admin_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  result TEXT NOT NULL,
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS
+ALTER TABLE public.seller_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wallets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wallet_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_transfers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.withdrawal_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.webhook_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Sellers view own seller account" ON public.seller_accounts FOR SELECT USING (auth.uid() = seller_id);
+CREATE POLICY "Sellers update own seller account" ON public.seller_accounts FOR UPDATE USING (auth.uid() = seller_id);
+CREATE POLICY "Sellers view own wallet" ON public.wallets FOR SELECT USING (auth.uid() = seller_id);
+CREATE POLICY "Sellers view own wallet transactions" ON public.wallet_transactions FOR SELECT USING (auth.uid() = seller_id);
+CREATE POLICY "Sellers view own withdrawal requests" ON public.withdrawal_requests FOR SELECT USING (auth.uid() = seller_id);
+CREATE POLICY "Sellers submit own withdrawal requests" ON public.withdrawal_requests FOR INSERT WITH CHECK (auth.uid() = seller_id);
