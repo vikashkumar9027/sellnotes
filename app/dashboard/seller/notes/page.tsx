@@ -6,18 +6,47 @@ import { store } from '@/lib/store';
 import { PlusCircle, Eye, Trash2, CheckCircle2 } from 'lucide-react';
 import { formatPrice, formatDate, getStatusBadgeClass } from '@/lib/utils';
 import { Note } from '@/types';
+import { useAuth } from '@/context/AuthContext';
 
 export default function SellerNotesPage() {
-  const sellerId = 'user-seller-1';
+  const { user } = useAuth();
+  const sellerId = user?.id || 'user-seller-1';
   const [notes, setNotes] = useState<Note[]>([]);
 
   const refreshNotes = () => {
-    setNotes(store.getNotesBySeller(sellerId));
+    const all = store.getNotes();
+    const userNotes = all.filter(
+      (n) =>
+        n.seller_id === sellerId ||
+        (user && (n.seller_id === user.id || n.seller?.email === user.email)) ||
+        sellerId === 'user-seller-1'
+    );
+    setNotes(userNotes);
   };
 
   useEffect(() => {
     refreshNotes();
-  }, []);
+
+    // Pull latest notes from server API
+    fetch('/api/notes')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.notes && Array.isArray(data.notes)) {
+          store.syncNotes(data.notes);
+          refreshNotes();
+        }
+      })
+      .catch((err) => console.warn('Failed to sync seller notes:', err));
+
+    const handleUpdated = () => refreshNotes();
+    window.addEventListener('notemart_notes_updated', handleUpdated);
+    window.addEventListener('storage', handleUpdated);
+
+    return () => {
+      window.removeEventListener('notemart_notes_updated', handleUpdated);
+      window.removeEventListener('storage', handleUpdated);
+    };
+  }, [sellerId, user]);
 
   const handleDelete = (noteId: string) => {
     if (confirm('Are you sure you want to delete this note?')) {

@@ -337,6 +337,7 @@ export interface SearchFilterState {
   course: string;
   semester: string;
   language: string;
+  level?: string;
   type: 'all' | 'free' | 'paid';
   priceRange: [number, number];
   minRating: number;

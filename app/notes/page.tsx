@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import SearchBar from '@/components/notes/SearchBar';
 import FilterSidebar from '@/components/notes/FilterSidebar';
 import NoteCard from '@/components/notes/NoteCard';
 import { store } from '@/lib/store';
 import { SearchFilterState } from '@/types';
+import { COURSES_CATALOG } from '@/lib/course-catalog';
 import { BookOpen, Loader2 } from 'lucide-react';
 
 function MarketplaceContent() {
@@ -14,9 +15,43 @@ function MarketplaceContent() {
   const initialCategory = searchParams.get('category') || '';
   const initialQuery = searchParams.get('q') || '';
   const initialType = (searchParams.get('type') as SearchFilterState['type']) || 'all';
+  const initialLevel = searchParams.get('level') || '';
+  const initialCourse = searchParams.get('course') || '';
 
-  const categories = store.getCategories();
-  const allNotes = store.getApprovedNotes();
+  const [categories, setCategories] = useState(() => store.getCategories());
+  const [allNotes, setAllNotes] = useState(() => store.getApprovedNotes());
+
+  useEffect(() => {
+    // 1. Immediate sync with local storage
+    setAllNotes(store.getApprovedNotes());
+    setCategories(store.getCategories());
+
+    // 2. Fetch from server API to pull any newly uploaded notes
+    fetch('/api/notes')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.notes && Array.isArray(data.notes)) {
+          store.syncNotes(data.notes);
+          setAllNotes(store.getApprovedNotes());
+          setCategories(store.getCategories());
+        }
+      })
+      .catch((err) => console.warn('Could not sync notes from API:', err));
+
+    // 3. Listen for local update events
+    const handleNotesUpdated = () => {
+      setAllNotes([...store.getApprovedNotes()]);
+      setCategories([...store.getCategories()]);
+    };
+
+    window.addEventListener('notemart_notes_updated', handleNotesUpdated);
+    window.addEventListener('storage', handleNotesUpdated);
+
+    return () => {
+      window.removeEventListener('notemart_notes_updated', handleNotesUpdated);
+      window.removeEventListener('storage', handleNotesUpdated);
+    };
+  }, []);
 
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [filters, setFilters] = useState<SearchFilterState>({
@@ -24,9 +59,10 @@ function MarketplaceContent() {
     category: initialCategory,
     subject: '',
     university: '',
-    course: '',
+    course: initialCourse,
     semester: '',
     language: '',
+    level: initialLevel,
     type: initialType,
     priceRange: [0, 2000],
     minRating: 0,
@@ -47,6 +83,7 @@ function MarketplaceContent() {
       course: '',
       semester: '',
       language: '',
+      level: '',
       type: 'all',
       priceRange: [0, 2000],
       minRating: 0,
@@ -65,6 +102,48 @@ function MarketplaceContent() {
         const matchesCourse = note.course.toLowerCase().includes(q);
         const matchesTags = note.tags.some((t) => t.toLowerCase().includes(q));
         if (!matchesTitle && !matchesSubject && !matchesUni && !matchesCourse && !matchesTags) {
+          return false;
+        }
+      }
+
+      // Filter by Education Level
+      if (filters.level) {
+        const levelCourses = COURSES_CATALOG.filter((c) => c.level === filters.level);
+        const levelCourseNames = levelCourses.map((c) => c.name.toLowerCase());
+        const levelCategorySlugs = new Set(levelCourses.map((c) => c.categorySlug));
+        const noteCourse = note.course.toLowerCase();
+        
+        const matchesLevelCourse = levelCourseNames.some((cn) => noteCourse.includes(cn) || cn.includes(noteCourse));
+        const noteCategory = categories.find((c) => c.id === note.category_id);
+        const matchesLevelCategory = noteCategory && levelCategorySlugs.has(noteCategory.slug);
+        
+        const matchesKeywords =
+          (filters.level === 'school-10' && (noteCourse.includes('10th') || noteCourse.includes('class 10') || note.title.toLowerCase().includes('class 10'))) ||
+          (filters.level === 'school-11' && (noteCourse.includes('11th') || noteCourse.includes('class 11') || note.title.toLowerCase().includes('class 11'))) ||
+          (filters.level === 'school-12' && (noteCourse.includes('12th') || noteCourse.includes('class 12') || note.title.toLowerCase().includes('class 12'))) ||
+          (filters.level === 'ug' && (noteCourse.includes('b.a') || noteCourse.includes('b.sc') || noteCourse.includes('b.com') || noteCourse.includes('b.tech') || noteCourse.includes('bca') || noteCourse.includes('bba') || noteCourse.includes('ll.b') || noteCourse.includes('b.ed') || noteCourse.includes('b.pharma'))) ||
+          (filters.level === 'pg' && (noteCourse.includes('m.a') || noteCourse.includes('m.sc') || noteCourse.includes('m.com') || noteCourse.includes('mba') || noteCourse.includes('mca') || noteCourse.includes('m.tech') || noteCourse.includes('ll.m') || noteCourse.includes('m.ed'))) ||
+          (filters.level === 'competitive' && (noteCourse.includes('upsc') || noteCourse.includes('gate') || noteCourse.includes('ssc') || noteCourse.includes('banking') || noteCourse.includes('ugc net') || noteCourse.includes('jee') || noteCourse.includes('neet')));
+
+        if (!matchesLevelCourse && !matchesLevelCategory && !matchesKeywords) {
+          return false;
+        }
+      }
+
+      // Filter by Course
+      if (filters.course) {
+        const cLow = filters.course.toLowerCase();
+        const nCourseLow = note.course.toLowerCase();
+        if (!nCourseLow.includes(cLow) && !cLow.includes(nCourseLow)) {
+          return false;
+        }
+      }
+
+      // Filter by Subject
+      if (filters.subject) {
+        const sLow = filters.subject.toLowerCase();
+        const nSubLow = note.subject.toLowerCase();
+        if (!nSubLow.includes(sLow) && !sLow.includes(nSubLow)) {
           return false;
         }
       }

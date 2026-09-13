@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { store } from '@/lib/store';
 import PdfPreviewer from '@/components/notes/PdfPreviewer';
 import PurchaseButton from '@/components/notes/PurchaseButton';
 import { formatPrice, formatFileSize, formatDate } from '@/lib/utils';
-import { Star, Download, Eye, GraduationCap, ShieldCheck, Heart, Flag, Share2, BookOpen, User, CheckCircle2, AlertTriangle, Send } from 'lucide-react';
+import { Star, Download, Eye, GraduationCap, ShieldCheck, Heart, Flag, Share2, BookOpen, User, CheckCircle2, AlertTriangle, Send, Loader2 } from 'lucide-react';
 import { addReviewAction, reportNoteAction } from '@/actions/notes';
 import { useAuth } from '@/context/AuthContext';
+import { Note } from '@/types';
 
 export default function NoteDetailsPage() {
   const params = useParams();
@@ -17,9 +18,38 @@ export default function NoteDetailsPage() {
   const { user } = useAuth();
 
   const currentUserId = user?.id || '';
-  const note = store.getNoteBySlug(slug);
+  const [note, setNote] = useState<Note | null>(() => store.getNoteBySlug(slug) || null);
+  const [fetching, setFetching] = useState(!note);
 
-  const [isWishlisted, setIsWishlisted] = useState(() => (note && currentUserId) ? store.isInWishlist(currentUserId, note.id) : false);
+  useEffect(() => {
+    const existing = store.getNoteBySlug(slug);
+    if (existing) {
+      setNote(existing);
+      setFetching(false);
+      return;
+    }
+
+    // Attempt to pull from API if not yet in client memory
+    fetch(`/api/notes?slug=${encodeURIComponent(slug)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.note) {
+          store.saveNoteLocally(data.note);
+          setNote(data.note);
+        }
+      })
+      .catch((err) => console.warn('Could not fetch note from API:', err))
+      .finally(() => setFetching(false));
+  }, [slug]);
+
+  const [isWishlisted, setIsWishlisted] = useState(false);
+
+  useEffect(() => {
+    if (note && currentUserId) {
+      setIsWishlisted(store.isInWishlist(currentUserId, note.id));
+    }
+  }, [note, currentUserId]);
+
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState('copyright_violation');
   const [reportDesc, setReportDesc] = useState('');
@@ -28,6 +58,15 @@ export default function NoteDetailsPage() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  if (fetching) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-24 text-center space-y-3">
+        <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+        <p className="text-xs text-slate-500 font-bold">Loading Note Details...</p>
+      </div>
+    );
+  }
 
   if (!note) {
     return (

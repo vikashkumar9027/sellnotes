@@ -2,11 +2,19 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UploadCloud, FileText, CheckCircle2, AlertCircle, Calculator, Plus, Sparkles, Loader2, ExternalLink } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle2, AlertCircle, Calculator, Plus, Sparkles, Loader2, ExternalLink, GraduationCap, BookOpen, Layers } from 'lucide-react';
 import { Category } from '@/types';
 import { uploadNoteAction } from '@/actions/notes';
 import { formatFileSize } from '@/lib/utils';
 import { store } from '@/lib/store';
+import { useAuth } from '@/context/AuthContext';
+import {
+  EDUCATION_LEVELS,
+  COURSES_CATALOG,
+  getCoursesByLevel,
+  getSubjectsForCourse,
+  getSemestersForLevel,
+} from '@/lib/course-catalog';
 
 interface UploadFormProps {
   categories: Category[];
@@ -15,16 +23,37 @@ interface UploadFormProps {
 
 export default function UploadForm({ categories, sellerId = 'user-seller-1' }: UploadFormProps) {
   const router = useRouter();
+  const { user } = useAuth();
+  const activeSellerId = user?.id || sellerId || 'user-seller-1';
   const [loading, setLoading] = useState(false);
   const [isFree, setIsFree] = useState(false);
   const [price, setPrice] = useState(49);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [customCategory, setCustomCategory] = useState('');
+  // Education Level & Course System
+  const [selectedLevel, setSelectedLevel] = useState<string>('ug');
+  const [availableCourses, setAvailableCourses] = useState(() => getCoursesByLevel('ug'));
+  const [selectedCourseOption, setSelectedCourseOption] = useState<string>('B.A. (Hons) English Literature');
+  const [customCourse, setCustomCourse] = useState('');
 
-  const [selectedSubjectOption, setSelectedSubjectOption] = useState('Data Structures');
+  // Course-specific Subjects System
+  const [availableSubjects, setAvailableSubjects] = useState(() => getSubjectsForCourse('B.A. (Hons) English Literature'));
+  const [selectedSubjectOption, setSelectedSubjectOption] = useState<string>(
+    () => getSubjectsForCourse('B.A. (Hons) English Literature')[0] || ''
+  );
   const [customSubject, setCustomSubject] = useState('');
+
+  // Level-specific Semesters / Phases
+  const [availableSemesters, setAvailableSemesters] = useState(() => getSemestersForLevel('ug'));
+  const [selectedSemester, setSelectedSemester] = useState<string>(() => getSemestersForLevel('ug')[0] || '1st Semester');
+
+  // Category Selector
+  const [selectedCategory, setSelectedCategory] = useState(() => {
+    const defaultCourse = COURSES_CATALOG.find((c) => c.name === 'B.A. (Hons) English Literature');
+    const match = categories.find((cat) => cat.slug === (defaultCourse?.categorySlug || 'english-complete'));
+    return match ? match.id : '';
+  });
+  const [customCategory, setCustomCategory] = useState('');
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -34,23 +63,45 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
   const platformFee = isFree ? 0 : Math.round((price * settings.platform_commission) / 100);
   const sellerEarning = isFree ? 0 : price - platformFee;
 
-  const popularSubjects = [
-    'Data Structures & Algorithms',
-    'Operating Systems',
-    'Database Management Systems (DBMS)',
-    'Computer Networks',
-    'Software Engineering',
-    'Thermodynamics',
-    'Fluid Mechanics',
-    'Structural Analysis',
-    'Circuit Theory',
-    'Digital Electronics',
-    'Engineering Mathematics',
-    'Organic Chemistry',
-    'Financial Accounting',
-    'Indian Polity & Constitution',
-    'Quantitative Aptitude',
-  ];
+  const handleLevelChange = (levelId: string) => {
+    setSelectedLevel(levelId);
+    const courses = getCoursesByLevel(levelId);
+    setAvailableCourses(courses);
+    const firstCourse = courses[0]?.name || '';
+    setSelectedCourseOption(firstCourse);
+    setCustomCourse('');
+
+    if (firstCourse) {
+      const subs = getSubjectsForCourse(firstCourse);
+      setAvailableSubjects(subs);
+      setSelectedSubjectOption(subs[0] || 'custom');
+
+      const foundCourse = COURSES_CATALOG.find((c) => c.name === firstCourse);
+      if (foundCourse) {
+        const matchedCat = categories.find((c) => c.slug === foundCourse.categorySlug);
+        if (matchedCat) setSelectedCategory(matchedCat.id);
+      }
+    }
+
+    const sems = getSemestersForLevel(levelId);
+    setAvailableSemesters(sems);
+    setSelectedSemester(sems[0] || '');
+  };
+
+  const handleCourseChange = (courseName: string) => {
+    setSelectedCourseOption(courseName);
+    if (courseName !== 'custom') {
+      const subs = getSubjectsForCourse(courseName);
+      setAvailableSubjects(subs);
+      setSelectedSubjectOption(subs[0] || 'custom');
+
+      const foundCourse = COURSES_CATALOG.find((c) => c.name === courseName);
+      if (foundCourse) {
+        const matchedCat = categories.find((c) => c.slug === foundCourse.categorySlug);
+        if (matchedCat) setSelectedCategory(matchedCat.id);
+      }
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -86,6 +137,12 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
       return;
     }
 
+    const finalCourse = selectedCourseOption === 'custom' ? customCourse.trim() : selectedCourseOption;
+    if (!finalCourse) {
+      setErrorMsg('Please select or type a course / degree name.');
+      return;
+    }
+
     const finalSubject = selectedSubjectOption === 'custom' ? customSubject.trim() : selectedSubjectOption;
     if (!finalSubject) {
       setErrorMsg('Please type or select a subject name.');
@@ -97,7 +154,9 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
     formData.append('pdf_file', selectedFile);
     formData.append('is_free', String(isFree));
     formData.append('price', String(isFree ? 0 : price));
+    formData.append('course', finalCourse);
     formData.append('subject', finalSubject);
+    formData.append('semester', selectedSemester);
 
     if (selectedCategory === 'custom') {
       formData.append('custom_category_name', customCategory.trim());
@@ -107,18 +166,26 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
       formData.append('custom_category_name', '');
     }
 
-    const res = await uploadNoteAction(formData, sellerId);
+    const res = await uploadNoteAction(formData, activeSellerId);
     setLoading(false);
 
     if (res.error) {
       setErrorMsg(res.error);
     } else {
+      if (res.note) {
+        // 1. Immediately register in client store and persist to localStorage
+        store.saveNoteLocally(res.note);
+        // 2. Dispatch event to notify all listening components
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('notemart_notes_updated'));
+        }
+      }
       const slug = res.note?.slug || '';
       setNewNoteSlug(slug);
       setSuccessMsg('🎉 Note published live! Your note is now visible on the main marketplace and in your seller dashboard.');
       setTimeout(() => {
         router.push(slug ? `/notes/${slug}` : '/dashboard/seller/notes');
-      }, 1500);
+      }, 1200);
     }
   };
 
@@ -200,23 +267,156 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
               type="text"
               name="title"
               required
-              placeholder="e.g. Data Structures Complete Master Class Notes or UPSC Polity Mind Maps"
+              placeholder="e.g. B.A. English Romantic Poetry Notes or Class 10 Science Chapterwise Summary"
               className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
-          {/* CATEGORY SELECTOR & CUSTOM WRITE-IN OPTION */}
+          {/* 1. EDUCATION LEVEL SELECTOR */}
+          <div className="md:col-span-2 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <GraduationCap className="w-4 h-4 text-indigo-600" />
+                Select Education Level *
+              </label>
+              <span className="text-[11px] text-slate-400">Class 10, 11, 12, Graduation (UG) or Post Graduation (PG)</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              {EDUCATION_LEVELS.map((lvl) => {
+                const isSelected = selectedLevel === lvl.id;
+                return (
+                  <button
+                    key={lvl.id}
+                    type="button"
+                    onClick={() => handleLevelChange(lvl.id)}
+                    className={`p-2.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                      isSelected
+                        ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 ring-2 ring-indigo-500/20 text-indigo-950 dark:text-indigo-100 shadow-xs'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-200'
+                    }`}
+                  >
+                    <span className="text-[10px] uppercase font-black tracking-wider text-indigo-600 dark:text-indigo-400">
+                      {lvl.badge}
+                    </span>
+                    <span className="text-xs font-bold mt-1 line-clamp-1">
+                      {lvl.name.split(' (')[0]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 2. COURSE / DEGREE SELECTOR */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Domain Category / Exam *</label>
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+              Course / Degree / Stream *
+            </label>
+            <select
+              value={selectedCourseOption}
+              onChange={(e) => handleCourseChange(e.target.value)}
+              required
+              className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium focus:outline-hidden"
+            >
+              {availableCourses.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+              <option value="custom">✏️ + Type Custom Course / Degree...</option>
+            </select>
+          </div>
+
+          {/* 3. SEMESTER / EXAM PHASE SELECTOR */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              Semester / Exam Phase *
+            </label>
+            <select
+              value={selectedSemester}
+              onChange={(e) => setSelectedSemester(e.target.value)}
+              required
+              className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-hidden"
+            >
+              {availableSemesters.map((sem) => (
+                <option key={sem} value={sem}>
+                  {sem}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* CUSTOM COURSE INPUT (IF SELECTED) */}
+          {selectedCourseOption === 'custom' && (
+            <div className="md:col-span-2 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+              <label className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5" /> Type Custom Course Name *
+              </label>
+              <input
+                type="text"
+                value={customCourse}
+                onChange={(e) => setCustomCourse(e.target.value)}
+                required={selectedCourseOption === 'custom'}
+                placeholder="e.g. B.Sc. Statistics / M.A. Public Administration"
+                className="w-full py-2.5 px-3.5 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/40 text-sm font-bold focus:outline-hidden"
+              />
+            </div>
+          )}
+
+          {/* 4. DYNAMIC SUBJECT SELECTOR */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-indigo-600" />
+              Subject / Paper Name *
+            </label>
+            <select
+              value={selectedSubjectOption}
+              onChange={(e) => setSelectedSubjectOption(e.target.value)}
+              className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium focus:outline-hidden"
+            >
+              {availableSubjects.map((sub) => (
+                <option key={sub} value={sub}>
+                  {sub}
+                </option>
+              ))}
+              <option value="custom">✏️ + Type Custom Subject Name...</option>
+            </select>
+          </div>
+
+          {/* 5. CATEGORY SELECTOR */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Domain Category / Marketplace Section *</label>
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
               required
               className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium focus:outline-hidden"
             >
-              <option value="">Select Category or Government Exam</option>
-              <optgroup label="Academic & Engineering Streams">
-                {categories.filter(c => !c.id.startsWith('cat-gov')).map((c) => (
+              <option value="">Select Domain Category</option>
+              <optgroup label="Complete English Literature & Language 📚">
+                {categories.filter(c => c.slug === 'english-complete').map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="School Boards (Class 10th, 11th, 12th) 🎒">
+                {categories.filter(c => c.slug.startsWith('class-')).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Graduation / Undergraduate Degrees (UG) 🎓">
+                {categories.filter(c => ['ba-arts-humanities', 'bsc-science-biotech', 'bcom-commerce-finance', 'bca-computer-applications', 'bba-business-management', 'computer-science', 'information-technology', 'mechanical-engineering', 'civil-engineering', 'electrical-engineering', 'electronics-comm'].includes(c.slug)).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Post Graduation & Masters (PG) 🏛️">
+                {categories.filter(c => ['ma-masters-arts', 'msc-masters-science', 'mcom-masters-commerce', 'mba-management', 'law-llb-llm', 'education-bed-med'].includes(c.slug)).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
@@ -233,43 +433,9 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
             </select>
           </div>
 
-          {/* CUSTOM CATEGORY INPUT FIELD */}
-          {selectedCategory === 'custom' && (
-            <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
-              <label className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" /> Type Custom Category Name *
-              </label>
-              <input
-                type="text"
-                value={customCategory}
-                onChange={(e) => setCustomCategory(e.target.value)}
-                required={selectedCategory === 'custom'}
-                placeholder="e.g. Aeronautical Engineering / SSC Stenographer"
-                className="w-full py-2.5 px-3.5 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/40 text-sm font-bold focus:outline-hidden"
-              />
-            </div>
-          )}
-
-          {/* SUBJECT SELECTOR & CUSTOM SUBJECT WRITE-IN OPTION */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Subject Name *</label>
-            <select
-              value={selectedSubjectOption}
-              onChange={(e) => setSelectedSubjectOption(e.target.value)}
-              className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium focus:outline-hidden"
-            >
-              {popularSubjects.map((sub) => (
-                <option key={sub} value={sub}>
-                  {sub}
-                </option>
-              ))}
-              <option value="custom">✏️ + Type Custom Subject Name...</option>
-            </select>
-          </div>
-
           {/* CUSTOM SUBJECT INPUT FIELD */}
           {selectedSubjectOption === 'custom' && (
-            <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="md:col-span-2 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
               <label className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5" /> Type Custom Subject Name *
               </label>
@@ -278,47 +444,42 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
                 value={customSubject}
                 onChange={(e) => setCustomSubject(e.target.value)}
                 required={selectedSubjectOption === 'custom'}
-                placeholder="e.g. Quantum Computing / Modern Indian History"
+                placeholder="e.g. Modernist Poetry / Molecular Genetics / Financial Derivatives"
                 className="w-full py-2.5 px-3.5 rounded-xl border-2 border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/40 text-sm font-bold focus:outline-hidden"
               />
             </div>
           )}
 
+          {/* CUSTOM CATEGORY INPUT FIELD */}
+          {selectedCategory === 'custom' && (
+            <div className="md:col-span-2 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+              <label className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5" /> Type Custom Category Name *
+              </label>
+              <input
+                type="text"
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                required={selectedCategory === 'custom'}
+                placeholder="e.g. Paramedical / Classical Sanskrit Literature"
+                className="w-full py-2.5 px-3.5 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/40 text-sm font-bold focus:outline-hidden"
+              />
+            </div>
+          )}
+
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">University / College / Exam Body *</label>
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">University / Board / College *</label>
             <input
               type="text"
               name="university"
               required
-              placeholder="e.g. IIT Bombay / Anna University / UPSC"
+              placeholder={
+                selectedLevel === 'school-10' || selectedLevel === 'school-11' || selectedLevel === 'school-12'
+                  ? 'e.g. CBSE / ICSE / UP Board / Maharashtra State Board'
+                  : 'e.g. Delhi University / IIT Bombay / BHU / JNU / Pune University'
+              }
               className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-hidden"
             />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Course / Degree / Exam Name *</label>
-            <input
-              type="text"
-              name="course"
-              required
-              placeholder="e.g. B.Tech Computer Science / Civil Services"
-              className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-hidden"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Semester / Exam Phase *</label>
-            <select
-              name="semester"
-              required
-              className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-hidden"
-            >
-              {['1st Semester', '2nd Semester', '3rd Semester', '4th Semester', '5th Semester', '6th Semester', '7th Semester', '8th Semester', 'Competitive Exam'].map((sem) => (
-                <option key={sem} value={sem}>
-                  {sem}
-                </option>
-              ))}
-            </select>
           </div>
 
           <div className="space-y-1">

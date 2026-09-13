@@ -1,6 +1,9 @@
 'use server';
 
+import fs from 'fs';
+import path from 'path';
 import { store } from '@/lib/store';
+import { saveNotesToDisk } from '@/lib/notes-storage';
 import { revalidatePath } from 'next/cache';
 import { ReportSchema, ReviewSchema } from '@/lib/validators';
 
@@ -33,8 +36,27 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
 
     const tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean);
     const pdfFile = formData.get('pdf_file') as File | null;
-    const pdf_path = pdfFile ? `/uploads/${pdfFile.name}` : '/sample-notes/sample.pdf';
-    const file_size = pdfFile ? pdfFile.size : 4500000;
+    let pdf_path = '/sample-notes/sample.pdf';
+    let file_size = 4500000;
+
+    if (pdfFile && typeof pdfFile !== 'string' && pdfFile.size > 0) {
+      file_size = pdfFile.size;
+      try {
+        const bytes = await pdfFile.arrayBuffer();
+        const buffer = Buffer.from(bytes);
+        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        const safeName = `${Date.now()}-${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const filePath = path.join(uploadsDir, safeName);
+        fs.writeFileSync(filePath, buffer);
+        pdf_path = `/uploads/${safeName}`;
+      } catch (fileErr) {
+        console.warn('Could not save uploaded PDF to disk (possibly read-only or serverless):', fileErr);
+        pdf_path = `/uploads/${Date.now()}-${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      }
+    }
 
     const newNote = store.createNote(
       {
@@ -58,6 +80,8 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
       },
       sellerId
     );
+
+    saveNotesToDisk(store.getNotes());
 
     revalidatePath('/notes');
     revalidatePath('/categories');

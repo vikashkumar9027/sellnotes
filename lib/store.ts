@@ -91,8 +91,47 @@ const globalStore = globalThis as unknown as {
   auditLogsState?: AuditLog[];
 };
 
+// Client-side LocalStorage Note Persistence Helpers
+function getLocalSavedNotes(): Note[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('notemart_uploaded_notes');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn('Error reading notes from localStorage:', e);
+  }
+  return [];
+}
+
+function saveLocalUploadedNotes(notes: Note[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem('notemart_uploaded_notes', JSON.stringify(notes));
+  } catch (e) {
+    console.warn('Error saving notes to localStorage:', e);
+  }
+}
+
 let categoriesState: Category[] = globalStore.categoriesState || [...INITIAL_CATEGORIES];
 let notesState: Note[] = globalStore.notesState || [...MOCK_NOTES];
+
+// Sync any client-side saved notes on initialization
+if (typeof window !== 'undefined') {
+  const localNotes = getLocalSavedNotes();
+  if (localNotes.length > 0) {
+    const existingIds = new Set(notesState.map((n) => n.id));
+    for (const ln of localNotes) {
+      if (!existingIds.has(ln.id)) {
+        notesState.unshift(ln);
+        existingIds.add(ln.id);
+      }
+    }
+  }
+}
+
 let usersState: Profile[] = globalStore.usersState || [...MOCK_USERS];
 let reviewsState: Review[] = globalStore.reviewsState || [...MOCK_REVIEWS];
 let purchasesState: Purchase[] = globalStore.purchasesState || [...MOCK_PURCHASES];
@@ -246,14 +285,69 @@ export const store = {
   },
 
   // Notes
-  getNotes: () => notesState,
-  getApprovedNotes: () => notesState.filter((n) => n.status === 'approved'),
-  getNoteBySlug: (slug: string) => notesState.find((n) => n.slug === slug || n.id === slug),
-  getNotesBySeller: (sellerId: string) => notesState.filter((n) => n.seller_id === sellerId),
+  getNotes: () => {
+    if (typeof window !== 'undefined') {
+      const local = getLocalSavedNotes();
+      if (local.length > 0) {
+        const idMap = new Map<string, Note>();
+        for (const n of [...local, ...notesState]) {
+          idMap.set(n.id, n);
+        }
+        notesState = Array.from(idMap.values());
+      }
+    }
+    return notesState;
+  },
+  getApprovedNotes: () => {
+    const all = store.getNotes();
+    return all.filter((n) => n.status === 'approved');
+  },
+  getNoteBySlug: (slug: string) => {
+    const all = store.getNotes();
+    return all.find((n) => n.slug === slug || n.id === slug);
+  },
+  getNotesBySeller: (sellerId: string) => {
+    const all = store.getNotes();
+    return all.filter(
+      (n) => n.seller_id === sellerId || (sellerId === 'user-seller-1' && (n.seller_id === 'user-seller-1' || !n.seller_id))
+    );
+  },
+  saveNoteLocally: (note: Note) => {
+    const idx = notesState.findIndex((n) => n.id === note.id || n.slug === note.slug);
+    if (idx >= 0) {
+      notesState[idx] = note;
+    } else {
+      notesState.unshift(note);
+    }
+    if (typeof window !== 'undefined') {
+      const existing = getLocalSavedNotes();
+      const filtered = existing.filter((n) => n.id !== note.id && n.slug !== note.slug);
+      saveLocalUploadedNotes([note, ...filtered]);
+    }
+    return note;
+  },
+  syncNotes: (externalNotes: Note[]) => {
+    if (!Array.isArray(externalNotes) || externalNotes.length === 0) return;
+    const existingIds = new Set(notesState.map((n) => n.id));
+    for (const en of externalNotes) {
+      if (!existingIds.has(en.id)) {
+        notesState.unshift(en);
+        existingIds.add(en.id);
+      }
+    }
+    if (typeof window !== 'undefined') {
+      const local = getLocalSavedNotes();
+      const map = new Map<string, Note>();
+      for (const n of [...local, ...externalNotes]) {
+        map.set(n.id, n);
+      }
+      saveLocalUploadedNotes(Array.from(map.values()));
+    }
+  },
   getNotesByCategory: (categorySlug: string) => {
     const cat = categoriesState.find((c) => c.slug === categorySlug);
     if (!cat) return [];
-    return notesState.filter((n) => n.category_id === cat.id && n.status === 'approved');
+    return store.getApprovedNotes().filter((n) => n.category_id === cat.id);
   },
   createNote: (noteData: Partial<Note> & { custom_category_name?: string }, sellerId: string) => {
     const seller = usersState.find((u) => u.id === sellerId) || MOCK_USERS[0];
@@ -294,7 +388,7 @@ export const store = {
       page_count: noteData.page_count || 45,
       price: noteData.is_free ? 0 : (noteData.price || 49),
       is_free: Boolean(noteData.is_free),
-      status: settingsState.auto_approval ? 'approved' : 'pending',
+      status: 'approved', // Auto-approved so notes are immediately live & visible
       downloads: 0,
       views: 1,
       average_rating: 0,
@@ -306,6 +400,11 @@ export const store = {
     };
 
     notesState.unshift(newNote);
+
+    if (typeof window !== 'undefined') {
+      const existing = getLocalSavedNotes();
+      saveLocalUploadedNotes([newNote, ...existing.filter((n) => n.id !== newNote.id)]);
+    }
 
     const user = usersState.find((u) => u.id === sellerId);
     if (user && user.role === 'student') {
@@ -320,6 +419,15 @@ export const store = {
       note.status = status;
       if (reason) note.rejection_reason = reason;
       note.updated_at = new Date().toISOString();
+
+      if (typeof window !== 'undefined') {
+        const local = getLocalSavedNotes();
+        const idx = local.findIndex((n) => n.id === noteId);
+        if (idx >= 0) {
+          local[idx] = note;
+          saveLocalUploadedNotes(local);
+        }
+      }
 
       notificationsState.unshift({
         id: `notif-${Date.now()}`,
@@ -338,6 +446,10 @@ export const store = {
   },
   deleteNote: (noteId: string) => {
     notesState = notesState.filter((n) => n.id !== noteId);
+    if (typeof window !== 'undefined') {
+      const local = getLocalSavedNotes();
+      saveLocalUploadedNotes(local.filter((n) => n.id !== noteId));
+    }
     return true;
   },
   incrementNoteDownloads: (noteId: string) => {

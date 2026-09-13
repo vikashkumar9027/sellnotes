@@ -3,10 +3,12 @@
 import React from 'react';
 import UploadForm from '@/components/notes/UploadForm';
 import { store } from '@/lib/store';
+import { useAuth } from '@/context/AuthContext';
 
 export default function SellerUploadPage() {
   const categories = store.getCategories();
-  const sellerId = 'user-seller-1';
+  const { user } = useAuth();
+  const sellerId = user?.id || 'user-seller-1';
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">

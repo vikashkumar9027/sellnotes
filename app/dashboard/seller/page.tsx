@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { store } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
@@ -28,9 +28,26 @@ export default function SellerDashboardPage() {
 
   const wallet = store.getWallet(sellerId);
   const account = store.getSellerAccount(sellerId);
-  const notes = store.getNotesBySeller(sellerId);
+  const [notes, setNotes] = useState(() => store.getNotesBySeller(sellerId));
   const sales = store.getPurchasesBySeller(sellerId);
   const settings = store.getSettings();
+
+  useEffect(() => {
+    setNotes(store.getNotesBySeller(sellerId));
+    fetch('/api/notes')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.notes && Array.isArray(d.notes)) {
+          store.syncNotes(d.notes);
+          setNotes(store.getNotesBySeller(sellerId));
+        }
+      })
+      .catch(() => {});
+
+    const handleUpdate = () => setNotes(store.getNotesBySeller(sellerId));
+    window.addEventListener('notemart_notes_updated', handleUpdate);
+    return () => window.removeEventListener('notemart_notes_updated', handleUpdate);
+  }, [sellerId]);
 
   const approvedNotes = notes.filter((n) => n.status === 'approved');
   const pendingNotes = notes.filter((n) => n.status === 'pending');

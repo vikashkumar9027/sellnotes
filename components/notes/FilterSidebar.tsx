@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Filter, RotateCcw, Check, Sparkles } from 'lucide-react';
+import { Filter, RotateCcw, Check, GraduationCap, BookOpen } from 'lucide-react';
 import { Category, SearchFilterState } from '@/types';
+import { EDUCATION_LEVELS, getCoursesByLevel, getSemestersForLevel } from '@/lib/course-catalog';
 
 interface FilterSidebarProps {
   categories: Category[];
@@ -12,7 +13,9 @@ interface FilterSidebarProps {
 }
 
 export default function FilterSidebar({ categories, filters, onChange, onReset }: FilterSidebarProps) {
-  const semesters = ['1st Semester', '2nd Semester', '3rd Semester', '4th Semester', '5th Semester', '6th Semester', '7th Semester', '8th Semester'];
+  const currentLevel = filters.level || '';
+  const availableCourses = getCoursesByLevel(currentLevel);
+  const semesters = getSemestersForLevel(currentLevel);
   
   const sortOptions = [
     { label: 'Newest First', value: 'newest' },
@@ -33,7 +36,7 @@ export default function FilterSidebar({ categories, filters, onChange, onReset }
         </div>
         <button
           onClick={onReset}
-          className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
+          className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
         >
           <RotateCcw className="w-3 h-3" /> Reset
         </button>
@@ -52,6 +55,49 @@ export default function FilterSidebar({ categories, filters, onChange, onReset }
           {sortOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* EDUCATION LEVEL (School 10/11/12, UG, PG, Govt) */}
+      <div className="space-y-2">
+        <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+          <GraduationCap className="w-3.5 h-3.5 text-indigo-600" />
+          Education Level
+        </label>
+        <select
+          value={currentLevel}
+          onChange={(e) => {
+            const nextLevel = e.target.value;
+            onChange({ level: nextLevel, course: '', semester: '' });
+          }}
+          className="w-full py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-medium focus:outline-hidden"
+        >
+          <option value="">All Education Levels</option>
+          {EDUCATION_LEVELS.map((lvl) => (
+            <option key={lvl.id} value={lvl.id}>
+              {lvl.badge} — {lvl.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* COURSE SELECTOR (Class 10, Class 12, BA, BSc, BCom, MA, MSc, MBA, etc.) */}
+      <div className="space-y-2">
+        <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+          <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+          Course / Degree
+        </label>
+        <select
+          value={filters.course || ''}
+          onChange={(e) => onChange({ course: e.target.value })}
+          className="w-full py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-medium focus:outline-hidden"
+        >
+          <option value="">All Courses ({availableCourses.length})</option>
+          {availableCourses.map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.name}
             </option>
           ))}
         </select>
@@ -83,7 +129,26 @@ export default function FilterSidebar({ categories, filters, onChange, onReset }
         </div>
       </div>
 
-      {/* CATEGORIES */}
+      {/* SEMESTER / EXAM PHASE */}
+      <div className="space-y-2">
+        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+          Semester / Exam Phase
+        </label>
+        <select
+          value={filters.semester}
+          onChange={(e) => onChange({ semester: e.target.value })}
+          className="w-full py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-medium focus:outline-hidden"
+        >
+          <option value="">All Semesters / Phases</option>
+          {semesters.map((sem) => (
+            <option key={sem} value={sem}>
+              {sem}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* DOMAIN CATEGORIES */}
       <div className="space-y-2">
         <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
           Domain Category
@@ -118,25 +183,6 @@ export default function FilterSidebar({ categories, filters, onChange, onReset }
             );
           })}
         </div>
-      </div>
-
-      {/* SEMESTER */}
-      <div className="space-y-2">
-        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-          Semester
-        </label>
-        <select
-          value={filters.semester}
-          onChange={(e) => onChange({ semester: e.target.value })}
-          className="w-full py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-medium focus:outline-hidden"
-        >
-          <option value="">All Semesters</option>
-          {semesters.map((sem) => (
-            <option key={sem} value={sem}>
-              {sem}
-            </option>
-          ))}
-        </select>
       </div>
 
       {/* MINIMUM RATING */}
