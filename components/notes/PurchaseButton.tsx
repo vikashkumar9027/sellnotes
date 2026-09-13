@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShoppingCart, Loader2, Eye, ShieldCheck } from 'lucide-react';
+import { ShoppingCart, Loader2, Eye, ShieldCheck, Lock, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import { Note } from '@/types';
 import { createRazorpayOrderAction, verifyPaymentAction } from '@/actions/payments';
 import { formatPrice } from '@/lib/utils';
@@ -29,6 +30,7 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
   const effectiveBuyerId = buyerId || user?.id;
 
   const [loading, setLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
   const [purchased, setPurchased] = useState(() =>
     effectiveBuyerId ? store.hasUserPurchased(effectiveBuyerId, note.id) : false
   );
@@ -45,14 +47,21 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
     document.documentElement.style.overflow = 'auto';
   };
 
-  const loadRazorpayScript = () => {
+  const loadRazorpayScript = (): Promise<boolean> => {
     return new Promise((resolve) => {
-      if (window.Razorpay) {
+      if (typeof window !== 'undefined' && window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      const existingScript = document.getElementById('razorpay-checkout-script');
+      if (existingScript) {
         resolve(true);
         return;
       }
       const script = document.createElement('script');
+      script.id = 'razorpay-checkout-script';
       script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
       script.onload = () => resolve(true);
       script.onerror = () => resolve(false);
       document.body.appendChild(script);
@@ -60,14 +69,16 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
   };
 
   const handleBuyClick = async () => {
+    setCheckoutError('');
+
     if (!user || !effectiveBuyerId) {
-      alert('Please log in or register to purchase and access notes.');
+      toast.info('Please log in or register to purchase and access notes.');
       router.push(`/login?redirect=/notes/${note.slug}`);
       return;
     }
 
     if (user.id === note.seller_id) {
-      alert('You are the author of this note. You already have full access.');
+      toast.info('You are the author of this note. You already have full access.');
       return;
     }
 
@@ -81,21 +92,28 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
       });
 
       if (orderRes.error || !orderRes.orderId) {
-        alert(orderRes.error || 'Failed to initiate Razorpay order.');
+        const err = orderRes.error || 'Failed to initiate Razorpay order.';
+        setCheckoutError(err);
+        toast.error(err);
         setLoading(false);
         return;
       }
 
-      // 2. Load official Razorpay Checkout SDK
+      // 2. Ensure Razorpay Checkout SDK is ready
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
-        alert('Could not load Razorpay Checkout. Please check your internet connection.');
+        const err = 'Could not load Razorpay Checkout script. Please check your internet connection.';
+        setCheckoutError(err);
+        toast.error(err);
         setLoading(false);
         return;
       }
 
       // 3. Configure Razorpay Checkout Modal
-      const keyId = orderRes.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+      const keyId =
+        orderRes.keyId ||
+        process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
+        'rzp_live_Tb9qeGZfBaMqlH';
       const isTestMode = keyId.startsWith('rzp_test_');
 
       const options = {
@@ -104,7 +122,7 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
         currency: orderRes.currency || 'INR',
         name: 'NoteMart',
         description: isTestMode
-          ? `[TEST MODE - Do not use real PhonePe/GPay] Select Cards or Netbanking and click Success`
+          ? `[TEST MODE] Select Netbanking/Card & click Success`
           : `Handwritten Note: ${note.title} (Inc. ${orderRes.gstRate}% GST)`,
         image: '/logo.png',
         order_id: orderRes.orderId,
@@ -116,7 +134,7 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
           restoreScroll();
           setLoading(true);
 
-          // 4. Server-Side HMAC Signature Verification (Never trust frontend alone)
+          // 4. Server-Side HMAC Signature Verification
           const verifyRes = await verifyPaymentAction({
             razorpay_order_id: response.razorpay_order_id,
             razorpay_payment_id: response.razorpay_payment_id,
@@ -136,10 +154,12 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
             });
             setPurchased(true);
             if (onSuccess) onSuccess();
-            alert(`🎉 Payment Verified! Total Paid: ${formatPrice(financial.buyerTotalAmount)} (Inc. 18% GST). Full note access unlocked!`);
+            toast.success(`🎉 Payment Verified! Total Paid: ${formatPrice(financial.buyerTotalAmount)}. Full note unlocked!`);
             router.push(`/notes/${note.slug}/read`);
           } else {
-            alert(verifyRes.error || 'Payment signature verification failed. Please contact support.');
+            const verifyErr = verifyRes.error || 'Payment signature verification failed. Please contact support.';
+            setCheckoutError(verifyErr);
+            toast.error(verifyErr);
           }
         },
         prefill: {
@@ -163,16 +183,21 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
         rzp.on('payment.failed', function (resp: any) {
           setLoading(false);
           restoreScroll();
-          alert(`Payment Failed: ${resp.error?.description || 'Transaction declined by bank/gateway.'}`);
+          const failMsg = `Payment Failed: ${resp.error?.description || 'Transaction declined by bank/gateway.'}`;
+          setCheckoutError(failMsg);
+          toast.error(failMsg);
         });
         rzp.open();
       } else {
         setLoading(false);
-        alert('Razorpay Checkout failed to initialize.');
+        const failMsg = 'Razorpay Checkout modal failed to open. Please refresh and try again.';
+        setCheckoutError(failMsg);
+        toast.error(failMsg);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'An unexpected payment error occurred.';
-      alert(errMsg);
+      setCheckoutError(errMsg);
+      toast.error(errMsg);
       setLoading(false);
       restoreScroll();
     }
@@ -206,21 +231,46 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
   }
 
   return (
-    <div className="space-y-2 w-full">
-      <button
-        onClick={handleBuyClick}
-        disabled={loading}
-        className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/30 transition-all hover:scale-[1.01]"
-      >
-        {loading ? (
-          <Loader2 className="w-5 h-5 animate-spin" />
-        ) : (
-          <>
-            <ShoppingCart className="w-5 h-5" />
-            <span>Buy Now – {formatPrice(financial.buyerTotalAmount)}</span>
-          </>
-        )}
-      </button>
+    <div className="space-y-3 w-full">
+      {checkoutError && (
+        <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-xs text-rose-800 dark:text-rose-300 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="space-y-0.5 flex-1">
+            <div className="font-bold">Payment could not be opened</div>
+            <div className="text-[11px] text-rose-700 dark:text-rose-400 leading-normal">{checkoutError}</div>
+          </div>
+        </div>
+      )}
+
+      {!user ? (
+        <div className="space-y-1.5 w-full">
+          <Link
+            href={`/login?redirect=/notes/${note.slug}`}
+            className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/30 transition-all hover:scale-[1.01]"
+          >
+            <Lock className="w-4 h-4" />
+            <span>Login to Buy – {formatPrice(financial.buyerTotalAmount)}</span>
+          </Link>
+          <p className="text-[11px] text-center text-slate-500 dark:text-slate-400">
+            Sign in with email OTP to purchase &amp; save this note in your library.
+          </p>
+        </div>
+      ) : (
+        <button
+          onClick={handleBuyClick}
+          disabled={loading}
+          className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/30 transition-all hover:scale-[1.01] cursor-pointer disabled:opacity-70"
+        >
+          {loading ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <>
+              <ShoppingCart className="w-5 h-5" />
+              <span>Buy Now – {formatPrice(financial.buyerTotalAmount)}</span>
+            </>
+          )}
+        </button>
+      )}
 
       {/* TRANSPARENT COST BREAKDOWN FOR BUYER */}
       <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-1">

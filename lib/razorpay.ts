@@ -2,12 +2,10 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
 export const getRazorpayInstance = () => {
-  const key_id = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
-  const key_secret = process.env.RAZORPAY_KEY_SECRET || '';
-
-  if (!key_secret) {
-    console.warn('[RAZORPAY] RAZORPAY_KEY_SECRET is not set in environment variables.');
-  }
+  const key_id =
+    (process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_Tb9qeGZfBaMqlH').trim();
+  const key_secret =
+    (process.env.RAZORPAY_KEY_SECRET || 'Qx4YI3ijQaCP22EYqrMRKdhG').trim();
 
   return new Razorpay({
     key_id,
@@ -27,7 +25,8 @@ export const verifyRazorpaySignature = ({
   payment_id: string;
   signature: string;
 }): boolean => {
-  const key_secret = process.env.RAZORPAY_KEY_SECRET || '';
+  const key_secret =
+    (process.env.RAZORPAY_KEY_SECRET || 'Qx4YI3ijQaCP22EYqrMRKdhG').trim();
 
   if (!key_secret || !order_id || !payment_id || !signature) {
     return false;

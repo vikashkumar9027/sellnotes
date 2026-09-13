@@ -10,21 +10,31 @@ export async function createRazorpayOrderAction({
   buyerId,
 }: {
   noteId: string;
-  buyerId: string;
+  buyerId?: string;
 }) {
   try {
+    let effectiveBuyerId = buyerId;
+    if (!effectiveBuyerId) {
+      const cookieStore = await cookies();
+      effectiveBuyerId = cookieStore.get('notemart_user_id')?.value || '';
+    }
+
+    if (!effectiveBuyerId) {
+      return { error: 'Please log in or register before purchasing this note.' };
+    }
+
     // 1. Fetch current product price & details strictly from server-side store
     const note = store.getNotes().find((n) => n.id === noteId);
     if (!note) {
       return { error: 'Note not found' };
     }
 
-    if (note.seller_id === buyerId) {
-      return { error: 'You cannot purchase your own note' };
+    if (note.seller_id === effectiveBuyerId) {
+      return { error: 'You are the author of this note. You already have full access.' };
     }
 
-    if (store.hasUserPurchased(buyerId, noteId)) {
-      return { error: 'You already own this note' };
+    if (store.hasUserPurchased(effectiveBuyerId, noteId)) {
+      return { error: 'You already own this note. You can read or download it directly.' };
     }
 
     // 2. Perform all financial calculations strictly server-side (25% default platform fee, 75% seller net)
@@ -48,7 +58,7 @@ export async function createRazorpayOrderAction({
       receipt: `rcpt_${Date.now()}_${noteId.substring(0, 6)}`,
       notes: {
         note_id: noteId,
-        buyer_id: buyerId,
+        buyer_id: effectiveBuyerId,
         seller_id: note.seller_id,
         base_amount_rupees: String(financial.baseAmount),
         platform_fee_rupees: String(financial.platformFeeAmount),
@@ -71,7 +81,8 @@ export async function createRazorpayOrderAction({
       };
     }
 
-    const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || '';
+    const keyId =
+      (process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || 'rzp_live_Tb9qeGZfBaMqlH').trim();
 
     return {
       success: true,
