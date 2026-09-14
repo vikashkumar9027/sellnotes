@@ -14,7 +14,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { Note, Profile } from '@/types';
-import { getPdfFromIndexedDB, downloadBlobAsFile } from '@/lib/pdf-storage';
+import { getPdfFromIndexedDB, downloadBlobAsFile, savePdfToIndexedDB } from '@/lib/pdf-storage';
 import { toast } from 'sonner';
 import RealPdfCanvasViewer from './RealPdfCanvasViewer';
 import { useRouter } from 'next/navigation';
@@ -45,11 +45,14 @@ export default function SecurePdfReader({
 
     const resolvePdf = async () => {
       try {
-        // 1. Check local IndexedDB for exact original file
-        const localBlob =
-          (await getPdfFromIndexedDB(note.slug)) ||
-          (await getPdfFromIndexedDB(note.id)) ||
-          (await getPdfFromIndexedDB(note.title));
+        // 1. Check local IndexedDB across all available keys for exact original file
+        const localBlob = await getPdfFromIndexedDB([
+          note.slug,
+          note.id,
+          note.pdf_path || '',
+          note.storage_key || '',
+          note.title,
+        ]);
 
         if (localBlob && active) {
           setPdfSource(localBlob);
@@ -57,8 +60,24 @@ export default function SecurePdfReader({
           return;
         }
 
-        // 2. Fallback to server route
+        // 2. Fetch original PDF binary from server storage vault
         const serverUrl = `/api/notes/file?slug=${encodeURIComponent(note.slug)}&noteId=${encodeURIComponent(note.id)}&path=${encodeURIComponent(note.pdf_path || '')}`;
+        
+        try {
+          const res = await fetch(serverUrl);
+          if (res.ok) {
+            const blob = await res.blob();
+            if (active) {
+              setPdfSource(blob);
+              setLoading(false);
+            }
+            savePdfToIndexedDB([note.slug, note.id, note.pdf_path || ''], blob);
+            return;
+          }
+        } catch {
+          // Fall through to serverUrl string
+        }
+
         if (active) {
           setPdfSource(serverUrl);
           setLoading(false);

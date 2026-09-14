@@ -6,6 +6,7 @@ import { store } from '@/lib/store';
 import { saveNotesToDisk } from '@/lib/notes-storage';
 import { revalidatePath } from 'next/cache';
 import { ReportSchema, ReviewSchema } from '@/lib/validators';
+import { storeOriginalPdf, isValidPdfBuffer } from '@/lib/server-pdf-vault';
 
 export async function uploadNoteAction(formData: FormData, sellerId: string) {
   try {
@@ -38,44 +39,33 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
     const pdfFile = formData.get('pdf_file') as File | null;
     let pdf_path = '/sample-notes/sample.pdf';
     let file_size = 4500000;
+    let final_page_count = page_count;
+    let storage_key = `key-${Date.now()}`;
+    let original_filename = 'handwritten-notes.pdf';
+    let mime_type = 'application/pdf';
 
     if (pdfFile && typeof pdfFile !== 'string' && pdfFile.size > 0) {
+      original_filename = pdfFile.name || 'handwritten-notes.pdf';
+      mime_type = pdfFile.type || 'application/pdf';
       file_size = pdfFile.size;
+
       try {
         const bytes = await pdfFile.arrayBuffer();
         const buffer = Buffer.from(bytes);
-        const safeName = `${Date.now()}-${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
-        // 1. Try public/uploads (local dev, VPS, persistent server)
-        let written = false;
-        try {
-          const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-          if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-          }
-          fs.writeFileSync(path.join(uploadsDir, safeName), buffer);
-          written = true;
-        } catch {
-          // Ignored if read-only filesystem
+        if (!isValidPdfBuffer(buffer)) {
+          return { error: 'Uploaded file is not a valid PDF document. Please upload a genuine PDF file.' };
         }
 
-        // 2. Fallback to /tmp/uploads (Vercel serverless writable storage)
-        if (!written) {
-          try {
-            const tmpDir = path.join('/tmp', 'uploads');
-            if (!fs.existsSync(tmpDir)) {
-              fs.mkdirSync(tmpDir, { recursive: true });
-            }
-            fs.writeFileSync(path.join(tmpDir, safeName), buffer);
-          } catch (tmpErr) {
-            console.warn('Could not write to /tmp/uploads:', tmpErr);
-          }
-        }
-
-        pdf_path = `/uploads/${safeName}`;
+        const stored = await storeOriginalPdf(buffer, original_filename);
+        pdf_path = stored.pdfPath;
+        storage_key = stored.storageKey;
+        file_size = stored.fileSize;
+        // Automatic page count detection directly from uploaded PDF binary
+        final_page_count = stored.pageCount > 0 ? stored.pageCount : (page_count || 1);
       } catch (fileErr) {
         console.warn('Could not process uploaded PDF file:', fileErr);
-        pdf_path = `/uploads/${Date.now()}-${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        return { error: 'Failed to process and store uploaded PDF file.' };
       }
     }
 
@@ -95,8 +85,12 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
         tags,
         is_free,
         price,
-        page_count,
+        page_count: final_page_count,
         pdf_path,
+        storage_key,
+        original_filename,
+        mime_type,
+        uploaded_at: new Date().toISOString(),
         file_size,
       },
       sellerId

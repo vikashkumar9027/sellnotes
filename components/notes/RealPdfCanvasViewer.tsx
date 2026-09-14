@@ -47,6 +47,8 @@ export default function RealPdfCanvasViewer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfDocRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const activeRenderTaskRef = useRef<any>(null);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
@@ -157,14 +159,25 @@ export default function RealPdfCanvasViewer({
     };
   }, [pdfSource]);
 
-  // 3. Render current page to canvas with high DPI scaling
+  // 3. Render current page to canvas with high DPI scaling & strict cancellation
   const renderCurrentPage = useCallback(async () => {
-    if (!pdfDocRef.current || !canvasRef.current) return;
+    if (!pdfDocRef.current) return;
     if (currentPage > allowedPageLimit) return;
+
+    // 1. Cancel in-flight render task to prevent race conditions & duplicate overwriting
+    if (activeRenderTaskRef.current) {
+      try {
+        activeRenderTaskRef.current.cancel();
+      } catch {}
+      activeRenderTaskRef.current = null;
+    }
 
     setRenderingPage(true);
     try {
       const page = await pdfDocRef.current.getPage(currentPage);
+      // Ensure we are rendering the exact requested page number
+      if (page.pageNumber !== currentPage) return;
+
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -179,15 +192,26 @@ export default function RealPdfCanvasViewer({
       canvas.style.width = `${viewport.width / (window.devicePixelRatio || 1)}px`;
       canvas.style.height = `${viewport.height / (window.devicePixelRatio || 1)}px`;
 
+      // 2. Pre-clear canvas to prevent previous page bleed-through
+      context.clearRect(0, 0, canvas.width, canvas.height);
+
       const renderContext = {
         canvasContext: context,
         viewport: viewport,
       };
 
-      await page.render(renderContext).promise;
-    } catch (err) {
+      const renderTask = page.render(renderContext);
+      activeRenderTaskRef.current = renderTask;
+
+      await renderTask.promise;
+    } catch (err: any) {
+      if (err?.name === 'RenderingCancelledException') {
+        // Normal cancellation when user rapidly clicks next/prev page
+        return;
+      }
       console.warn('Error rendering page:', err);
     } finally {
+      activeRenderTaskRef.current = null;
       setRenderingPage(false);
     }
   }, [currentPage, allowedPageLimit, zoom]);
@@ -362,10 +386,40 @@ export default function RealPdfCanvasViewer({
                 <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
               </div>
             )}
-            <canvas ref={canvasRef} className="block max-w-full h-auto" />
+            <canvas key={`pdf-canvas-p${currentPage}`} ref={canvasRef} className="block max-w-full h-auto" />
           </div>
         )}
       </div>
+
+      {/* PAGE THUMBNAILS STRIP */}
+      {totalPages > 1 && (
+        <div className="bg-slate-950 px-4 py-2 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto">
+          <span className="text-[10px] font-extrabold text-slate-500 uppercase shrink-0 mr-1">
+            Jump To Page:
+          </span>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((pNum) => {
+            const isLocked = !isUnlocked && pNum > allowedPageLimit;
+            const isCurrent = pNum === currentPage;
+            return (
+              <button
+                key={pNum}
+                onClick={() => setCurrentPage(pNum)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 ${
+                  isCurrent
+                    ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-400'
+                    : isLocked
+                    ? 'bg-slate-900 hover:bg-slate-850 text-slate-500 border border-slate-800'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
+                title={isLocked ? `Page ${pNum} (Locked - Purchase required)` : `Page ${pNum}`}
+              >
+                {isLocked && <Lock className="w-2.5 h-2.5 text-amber-500 shrink-0" />}
+                <span>P.{pNum}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* FOOTER BAR */}
       <div className="bg-slate-950 px-4 py-2.5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-400">

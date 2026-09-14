@@ -8,7 +8,7 @@ import { uploadNoteAction } from '@/actions/notes';
 import { formatFileSize } from '@/lib/utils';
 import { store } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
-import { savePdfToIndexedDB } from '@/lib/pdf-storage';
+import { savePdfToIndexedDB, detectClientPdfPageCount } from '@/lib/pdf-storage';
 import {
   EDUCATION_LEVELS,
   COURSES_CATALOG,
@@ -30,6 +30,8 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
   const [isFree, setIsFree] = useState(false);
   const [price, setPrice] = useState(49);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [detectedPageCount, setDetectedPageCount] = useState<number>(0);
+  const [detectingPages, setDetectingPages] = useState<boolean>(false);
 
   // Education Level & Course System
   const [selectedLevel, setSelectedLevel] = useState<string>('ug');
@@ -104,21 +106,34 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (file.type !== 'application/pdf') {
         setErrorMsg('Only PDF files are allowed.');
         setSelectedFile(null);
+        setDetectedPageCount(0);
         return;
       }
       if (file.size > settings.max_pdf_size_mb * 1024 * 1024) {
         setErrorMsg(`File size exceeds maximum allowed limit of ${settings.max_pdf_size_mb} MB.`);
         setSelectedFile(null);
+        setDetectedPageCount(0);
         return;
       }
       setErrorMsg('');
       setSelectedFile(file);
+
+      // Automatically inspect PDF binary and detect real page count
+      setDetectingPages(true);
+      try {
+        const pages = await detectClientPdfPageCount(file);
+        setDetectedPageCount(pages > 0 ? pages : 1);
+      } catch {
+        setDetectedPageCount(1);
+      } finally {
+        setDetectingPages(false);
+      }
     }
   };
 
@@ -158,6 +173,7 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
     formData.append('course', finalCourse);
     formData.append('subject', finalSubject);
     formData.append('semester', selectedSemester);
+    formData.set('page_count', String(detectedPageCount || 1));
 
     if (selectedCategory === 'custom') {
       formData.append('custom_category_name', customCategory.trim());
@@ -174,11 +190,19 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
       setErrorMsg(res.error);
     } else {
       if (res.note) {
-        // Save full original PDF file into IndexedDB for instant reading & downloading
+        // Save full original PDF file byte-for-byte into IndexedDB for instant reading & downloading
         if (selectedFile) {
           try {
-            await savePdfToIndexedDB(res.note.slug, selectedFile);
-            await savePdfToIndexedDB(res.note.id, selectedFile);
+            await savePdfToIndexedDB(
+              [
+                res.note.slug,
+                res.note.id,
+                res.note.pdf_path,
+                res.note.storage_key || '',
+                res.note.title,
+              ].filter(Boolean) as string[],
+              selectedFile
+            );
           } catch (storageErr) {
             console.warn('Could not save PDF to IndexedDB:', storageErr);
           }
@@ -249,7 +273,18 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
                 <CheckCircle2 className="w-6 h-6" />
               </div>
               <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedFile.name}</p>
-              <span className="text-xs font-mono text-slate-500">{formatFileSize(selectedFile.size)}</span>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className="text-xs font-mono text-slate-500">{formatFileSize(selectedFile.size)}</span>
+                {detectingPages ? (
+                  <span className="text-xs text-indigo-500 flex items-center gap-1 font-bold">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Verifying PDF pages...
+                  </span>
+                ) : detectedPageCount > 0 ? (
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-extrabold border border-emerald-300 dark:border-emerald-800">
+                    Original PDF: {detectedPageCount} Pages Verified
+                  </span>
+                ) : null}
+              </div>
               <p className="text-[11px] text-indigo-600 font-semibold">Click to change file</p>
             </div>
           ) : (
@@ -493,14 +528,23 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Page Count *</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Page Count *</label>
+              {detectedPageCount > 0 && (
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold uppercase tracking-wider">
+                  ✓ Verified from PDF ({detectedPageCount} Pages)
+                </span>
+              )}
+            </div>
             <input
               type="number"
               name="page_count"
               min="1"
-              defaultValue="45"
+              value={detectedPageCount || ''}
+              onChange={(e) => setDetectedPageCount(Number(e.target.value))}
+              placeholder="e.g. 50"
               required
-              className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-hidden"
+              className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-extrabold focus:outline-hidden"
             />
           </div>
 

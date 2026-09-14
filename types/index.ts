@@ -59,6 +59,10 @@ export interface Note {
   language: string;
   tags: string[];
   pdf_path: string;
+  storage_key?: string;
+  original_filename?: string;
+  mime_type?: string;
+  uploaded_at?: string;
   preview_path?: string;
   thumbnail_url?: string;
   file_size: number;

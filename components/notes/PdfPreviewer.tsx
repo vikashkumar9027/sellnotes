@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Note } from '@/types';
-import { getPdfFromIndexedDB, downloadBlobAsFile } from '@/lib/pdf-storage';
+import { getPdfFromIndexedDB, downloadBlobAsFile, savePdfToIndexedDB } from '@/lib/pdf-storage';
 import RealPdfCanvasViewer from './RealPdfCanvasViewer';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -27,10 +27,13 @@ export default function PdfPreviewer({
 
     const resolvePdf = async () => {
       try {
-        const localBlob =
-          (await getPdfFromIndexedDB(note.slug)) ||
-          (await getPdfFromIndexedDB(note.id)) ||
-          (await getPdfFromIndexedDB(note.title));
+        const localBlob = await getPdfFromIndexedDB([
+          note.slug,
+          note.id,
+          note.pdf_path || '',
+          note.storage_key || '',
+          note.title,
+        ]);
 
         if (localBlob && active) {
           setPdfSource(localBlob);
@@ -39,6 +42,22 @@ export default function PdfPreviewer({
         }
 
         const serverUrl = `/api/notes/file?slug=${encodeURIComponent(note.slug)}&noteId=${encodeURIComponent(note.id)}&path=${encodeURIComponent(note.pdf_path || '')}`;
+        
+        try {
+          const res = await fetch(serverUrl);
+          if (res.ok) {
+            const blob = await res.blob();
+            if (active) {
+              setPdfSource(blob);
+              setLoading(false);
+            }
+            savePdfToIndexedDB([note.slug, note.id, note.pdf_path || ''], blob);
+            return;
+          }
+        } catch {
+          // Fall through to direct URL string
+        }
+
         if (active) {
           setPdfSource(serverUrl);
           setLoading(false);
