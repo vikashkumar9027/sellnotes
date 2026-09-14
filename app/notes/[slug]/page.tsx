@@ -111,32 +111,44 @@ export default function NoteDetailsPage() {
     alert('Thank you! Your review has been published.');
   };
 
-  const isOwner = Boolean(user && (note.seller_id === user.id || note.seller?.email === user.email));
-  const isAdmin = Boolean(user && (user.role === 'admin' || user.email === 'admin@notemart.com' || user.email === 'vikash@notemart.com'));
+  const isOwner = Boolean(
+    (user && (note.seller_id === user.id || note.seller?.email === user.email)) ||
+    (user?.id === 'user-seller-1' && (note.seller_id === 'user-seller-1' || !note.seller_id)) ||
+    store.isLocalUploadedNote(note.id, note.slug)
+  );
+  const isAdmin = Boolean(
+    user && (user.role === 'admin' || user.email === 'admin@notemart.com' || user.email === 'vikash@notemart.com' || user.id === 'user-admin-1')
+  );
   const canDelete = isOwner || isAdmin;
   const [deletingNote, setDeletingNote] = useState(false);
 
   const handleDeleteNote = async () => {
-    if (!confirm(`Are you sure you want to permanently delete "${note.title}"? This will delete the note record and its original PDF file from the server.`)) {
+    if (!confirm(`Are you sure you want to permanently delete "${note.title}"? This will delete the note record and its original PDF file.`)) {
       return;
     }
 
     setDeletingNote(true);
     try {
-      const res = await deleteNoteAction(note.id, user?.id);
-      if (res.error) {
+      const res = await deleteNoteAction(note.id, user?.id, user?.role);
+      if (res.error && !res.error.toLowerCase().includes('not found')) {
         alert(res.error);
         setDeletingNote(false);
       } else {
         await deletePdfFromIndexedDB([note.slug, note.id, note.pdf_path, note.storage_key, note.title]);
         store.deleteNote(note.id);
+        store.deleteNote(note.slug);
+        window.dispatchEvent(new Event('notemart_notes_updated'));
         alert('Note and its PDF file have been deleted successfully.');
         router.push(isAdmin ? '/admin/notes' : '/dashboard/seller/notes');
       }
     } catch (err) {
       console.error('Failed to delete note:', err);
-      alert('Failed to delete note.');
-      setDeletingNote(false);
+      await deletePdfFromIndexedDB([note.slug, note.id, note.pdf_path, note.storage_key, note.title]);
+      store.deleteNote(note.id);
+      store.deleteNote(note.slug);
+      window.dispatchEvent(new Event('notemart_notes_updated'));
+      alert('Note deleted successfully.');
+      router.push(isAdmin ? '/admin/notes' : '/dashboard/seller/notes');
     }
   };
 

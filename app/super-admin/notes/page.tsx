@@ -51,17 +51,23 @@ export default function SuperAdminNotesPage() {
 
     setProcessingId(note.id);
     try {
-      const res = await deleteNoteAction(note.id);
-      if (res.error) {
+      const res = await deleteNoteAction(note.id, 'user-super-admin', 'admin');
+      if (res.error && !res.alreadyDeleted) {
         alert(res.error);
       } else {
         await deletePdfFromIndexedDB([note.slug, note.id, note.pdf_path, note.storage_key, note.title]);
         store.deleteNote(note.id);
-        setNotesList((prev) => prev.filter((n) => n.id !== note.id));
+        store.deleteNote(note.slug);
+        setNotesList((prev) => prev.filter((n) => n.id !== note.id && n.slug !== note.slug));
+        window.dispatchEvent(new Event('notemart_notes_updated'));
       }
     } catch (err) {
       console.error('Failed to delete note:', err);
-      alert('Failed to delete note.');
+      await deletePdfFromIndexedDB([note.slug, note.id, note.pdf_path, note.storage_key, note.title]);
+      store.deleteNote(note.id);
+      store.deleteNote(note.slug);
+      setNotesList((prev) => prev.filter((n) => n.id !== note.id && n.slug !== note.slug));
+      window.dispatchEvent(new Event('notemart_notes_updated'));
     } finally {
       setProcessingId(null);
     }

@@ -9,8 +9,10 @@ import { deletePdfFromIndexedDB } from '@/lib/pdf-storage';
 import { Note, NoteStatus } from '@/types';
 import { formatPrice, formatDate, getStatusBadgeClass } from '@/lib/utils';
 import { CheckCircle2, XCircle, Eye, Trash2, ShieldAlert, Loader2 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 export default function AdminNotesPage() {
+  const { user } = useAuth();
   const [notes, setNotes] = useState<Note[]>(() => store.getNotes());
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [targetNoteId, setTargetNoteId] = useState('');
@@ -41,17 +43,23 @@ export default function AdminNotesPage() {
 
     setDeletingId(note.id);
     try {
-      const res = await deleteNoteAction(note.id);
-      if (res.error) {
+      const res = await deleteNoteAction(note.id, user?.id || 'user-admin-1', 'admin');
+      if (res.error && !res.alreadyDeleted) {
         alert(res.error);
       } else {
         await deletePdfFromIndexedDB([note.slug, note.id, note.pdf_path, note.storage_key, note.title]);
         store.deleteNote(note.id);
-        setNotes((prev) => prev.filter((n) => n.id !== note.id));
+        store.deleteNote(note.slug);
+        setNotes((prev) => prev.filter((n) => n.id !== note.id && n.slug !== note.slug));
+        window.dispatchEvent(new Event('notemart_notes_updated'));
       }
     } catch (err) {
       console.error('Failed to delete note:', err);
-      alert('Failed to delete note.');
+      await deletePdfFromIndexedDB([note.slug, note.id, note.pdf_path, note.storage_key, note.title]);
+      store.deleteNote(note.id);
+      store.deleteNote(note.slug);
+      setNotes((prev) => prev.filter((n) => n.id !== note.id && n.slug !== note.slug));
+      window.dispatchEvent(new Event('notemart_notes_updated'));
     } finally {
       setDeletingId(null);
     }

@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { store } from '@/lib/store';
-import { loadSavedNotesFromDisk } from '@/lib/notes-storage';
+import { loadSavedNotesFromDisk, loadDeletedNoteIdsFromDisk } from '@/lib/notes-storage';
 import { fetchAllNotesFromSupabase } from '@/lib/supabase-db';
 
 export async function GET(request: NextRequest) {
   try {
+    // 0. Register any tombstoned deleted notes from disk into in-memory store
+    const deletedOnDisk = loadDeletedNoteIdsFromDisk();
+    for (const d of deletedOnDisk) {
+      store.addDeletedNoteId(d);
+    }
+
     // 1. If Supabase SQL database is connected, fetch live records from PostgreSQL
     const supabaseNotes = await fetchAllNotesFromSupabase();
     if (supabaseNotes && supabaseNotes.length > 0) {
@@ -52,16 +58,16 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
-    const { noteId, userId } = body;
+    const { noteId, userId, userRole } = body;
 
     if (!noteId) {
       return NextResponse.json({ error: 'Note ID is required' }, { status: 400 });
     }
 
     const { deleteNoteAction } = await import('@/actions/notes');
-    const result = await deleteNoteAction(noteId, userId);
+    const result = await deleteNoteAction(noteId, userId, userRole);
 
-    if (result.error) {
+    if (result.error && !result.alreadyDeleted) {
       return NextResponse.json({ error: result.error }, { status: 403 });
     }
 

@@ -84,10 +84,14 @@ export async function upsertNoteInSupabase(note: Note): Promise<boolean> {
  * Remove a note record from the Supabase PostgreSQL notes table.
  */
 export async function deleteNoteFromSupabase(noteId: string): Promise<boolean> {
-  if (!isRealSupabase()) return false;
+  if (!isRealSupabase() || !noteId) return false;
   try {
     const supabase = createAdminClient();
-    const { error } = await supabase.from('notes').delete().eq('id', noteId);
+    const clean = noteId.trim();
+    const { error } = await supabase
+      .from('notes')
+      .delete()
+      .or(`id.eq.${clean},slug.eq.${clean}`);
     if (error) {
       console.warn('Supabase delete note error:', error.message);
       return false;

@@ -74,6 +74,7 @@ export function calculateOrderAmounts(
 const globalStore = globalThis as unknown as {
   categoriesState?: Category[];
   notesState?: Note[];
+  deletedNoteIdsState?: string[];
   usersState?: Profile[];
   reviewsState?: Review[];
   purchasesState?: Purchase[];
@@ -115,12 +116,49 @@ function saveLocalUploadedNotes(notes: Note[]): void {
   }
 }
 
+function getLocalDeletedNoteIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('notemart_deleted_note_ids');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn('Error reading deleted notes from localStorage:', e);
+  }
+  return [];
+}
+
+function saveLocalDeletedNoteId(idOrSlug: string): void {
+  if (typeof window === 'undefined' || !idOrSlug) return;
+  try {
+    const existing = getLocalDeletedNoteIds();
+    const set = new Set(existing);
+    set.add(idOrSlug);
+    localStorage.setItem('notemart_deleted_note_ids', JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('Error saving deleted note ID to localStorage:', e);
+  }
+}
+
+let deletedNoteIdsState: Set<string> = new Set(globalStore.deletedNoteIdsState || []);
+if (typeof window !== 'undefined') {
+  for (const id of getLocalDeletedNoteIds()) {
+    deletedNoteIdsState.add(id);
+  }
+}
+
 let categoriesState: Category[] = globalStore.categoriesState || [...INITIAL_CATEGORIES];
-let notesState: Note[] = globalStore.notesState || [...MOCK_NOTES];
+let notesState: Note[] = (globalStore.notesState || [...MOCK_NOTES]).filter(
+  (n) => !deletedNoteIdsState.has(n.id) && !deletedNoteIdsState.has(n.slug)
+);
 
 // Sync any client-side saved notes on initialization
 if (typeof window !== 'undefined') {
-  const localNotes = getLocalSavedNotes();
+  const localNotes = getLocalSavedNotes().filter(
+    (n) => !deletedNoteIdsState.has(n.id) && !deletedNoteIdsState.has(n.slug)
+  );
   if (localNotes.length > 0) {
     const existingIds = new Set(notesState.map((n) => n.id));
     for (const ln of localNotes) {
@@ -287,24 +325,45 @@ export const store = {
   // Notes
   getNotes: () => {
     if (typeof window !== 'undefined') {
-      const local = getLocalSavedNotes();
+      for (const id of getLocalDeletedNoteIds()) {
+        deletedNoteIdsState.add(id);
+      }
+      const local = getLocalSavedNotes().filter(
+        (n) => !deletedNoteIdsState.has(n.id) && !deletedNoteIdsState.has(n.slug)
+      );
       if (local.length > 0) {
         const idMap = new Map<string, Note>();
         for (const n of [...local, ...notesState]) {
-          idMap.set(n.id, n);
+          if (!deletedNoteIdsState.has(n.id) && !deletedNoteIdsState.has(n.slug)) {
+            idMap.set(n.id, n);
+          }
         }
         notesState = Array.from(idMap.values());
       }
     }
-    return notesState;
+    return notesState.filter((n) => !deletedNoteIdsState.has(n.id) && !deletedNoteIdsState.has(n.slug));
   },
   getApprovedNotes: () => {
     const all = store.getNotes();
     return all.filter((n) => n.status === 'approved');
   },
   getNoteBySlug: (slug: string) => {
+    if (!slug || deletedNoteIdsState.has(slug)) return undefined;
     const all = store.getNotes();
-    return all.find((n) => n.slug === slug || n.id === slug);
+    return all.find((n) => (n.slug === slug || n.id === slug) && !deletedNoteIdsState.has(n.id) && !deletedNoteIdsState.has(n.slug));
+  },
+  isLocalUploadedNote: (id?: string, slug?: string): boolean => {
+    if (typeof window === 'undefined') return false;
+    const local = getLocalSavedNotes();
+    return local.some((n) => (id && n.id === id) || (slug && n.slug === slug));
+  },
+  getDeletedNoteIds: (): string[] => {
+    if (typeof window !== 'undefined') {
+      for (const id of getLocalDeletedNoteIds()) {
+        deletedNoteIdsState.add(id);
+      }
+    }
+    return Array.from(deletedNoteIdsState);
   },
   getNotesBySeller: (sellerId: string) => {
     const all = store.getNotes();
@@ -313,6 +372,14 @@ export const store = {
     );
   },
   saveNoteLocally: (note: Note) => {
+    deletedNoteIdsState.delete(note.id);
+    deletedNoteIdsState.delete(note.slug);
+    globalStore.deletedNoteIdsState = Array.from(deletedNoteIdsState);
+    if (typeof window !== 'undefined') {
+      const current = getLocalDeletedNoteIds().filter((id) => id !== note.id && id !== note.slug);
+      localStorage.setItem('notemart_deleted_note_ids', JSON.stringify(current));
+    }
+
     const idx = notesState.findIndex((n) => n.id === note.id || n.slug === note.slug);
     if (idx >= 0) {
       notesState[idx] = note;
@@ -328,18 +395,33 @@ export const store = {
   },
   syncNotes: (externalNotes: Note[]) => {
     if (!Array.isArray(externalNotes) || externalNotes.length === 0) return;
+
+    if (typeof window !== 'undefined') {
+      for (const id of getLocalDeletedNoteIds()) {
+        deletedNoteIdsState.add(id);
+      }
+    }
+
+    const validExternal = externalNotes.filter(
+      (en) => !deletedNoteIdsState.has(en.id) && !deletedNoteIdsState.has(en.slug)
+    );
+
     const existingIds = new Set(notesState.map((n) => n.id));
-    for (const en of externalNotes) {
+    for (const en of validExternal) {
       if (!existingIds.has(en.id)) {
         notesState.unshift(en);
         existingIds.add(en.id);
       }
     }
     if (typeof window !== 'undefined') {
-      const local = getLocalSavedNotes();
+      const local = getLocalSavedNotes().filter(
+        (n) => !deletedNoteIdsState.has(n.id) && !deletedNoteIdsState.has(n.slug)
+      );
       const map = new Map<string, Note>();
-      for (const n of [...local, ...externalNotes]) {
-        map.set(n.id, n);
+      for (const n of [...local, ...validExternal]) {
+        if (!deletedNoteIdsState.has(n.id) && !deletedNoteIdsState.has(n.slug)) {
+          map.set(n.id, n);
+        }
       }
       saveLocalUploadedNotes(Array.from(map.values()));
     }
@@ -448,14 +530,45 @@ export const store = {
     }
     return note;
   },
-  deleteNote: (noteId: string) => {
-    notesState = notesState.filter((n) => n.id !== noteId);
+  deleteNote: (noteIdOrSlug: string) => {
+    if (!noteIdOrSlug) return true;
+    const clean = noteIdOrSlug.trim();
+    const target = notesState.find((n) => n.id === clean || n.slug === clean);
+    const idToDelete = target?.id || clean;
+    const slugToDelete = target?.slug || clean;
+
+    deletedNoteIdsState.add(idToDelete);
+    deletedNoteIdsState.add(slugToDelete);
+    deletedNoteIdsState.add(clean);
+    globalStore.deletedNoteIdsState = Array.from(deletedNoteIdsState);
+
+    notesState = notesState.filter(
+      (n) => n.id !== idToDelete && n.slug !== slugToDelete && n.id !== clean && n.slug !== clean
+    );
     globalStore.notesState = notesState;
+
     if (typeof window !== 'undefined') {
+      saveLocalDeletedNoteId(idToDelete);
+      saveLocalDeletedNoteId(slugToDelete);
+      saveLocalDeletedNoteId(clean);
+
       const local = getLocalSavedNotes();
-      saveLocalUploadedNotes(local.filter((n) => n.id !== noteId));
+      saveLocalUploadedNotes(
+        local.filter(
+          (n) => n.id !== idToDelete && n.slug !== slugToDelete && n.id !== clean && n.slug !== clean
+        )
+      );
     }
     return true;
+  },
+  addDeletedNoteId: (idOrSlug: string) => {
+    if (!idOrSlug) return;
+    const clean = idOrSlug.trim();
+    deletedNoteIdsState.add(clean);
+    globalStore.deletedNoteIdsState = Array.from(deletedNoteIdsState);
+    if (typeof window !== 'undefined') {
+      saveLocalDeletedNoteId(clean);
+    }
   },
   incrementNoteDownloads: (noteId: string) => {
     const note = notesState.find((n) => n.id === noteId);
