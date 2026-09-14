@@ -3,13 +3,14 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShoppingCart, Loader2, Eye, ShieldCheck, Lock, AlertCircle } from 'lucide-react';
+import { ShoppingCart, Loader2, Eye, ShieldCheck, Lock, AlertCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Note } from '@/types';
 import { createRazorpayOrderAction, verifyPaymentAction } from '@/actions/payments';
 import { formatPrice } from '@/lib/utils';
 import { store, calculateOrderAmounts } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
+import { getPdfFromIndexedDB, downloadBlobAsFile } from '@/lib/pdf-storage';
 
 interface PurchaseButtonProps {
   note: Note;
@@ -203,16 +204,54 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
     }
   };
 
+  const handleDownload = async () => {
+    try {
+      const localBlob =
+        (await getPdfFromIndexedDB(note.slug)) ||
+        (await getPdfFromIndexedDB(note.id));
+
+      if (localBlob) {
+        downloadBlobAsFile(localBlob, `${note.title}.pdf`);
+        toast.success('Downloaded note PDF!');
+        return;
+      }
+
+      window.open(
+        `/api/notes/file?slug=${encodeURIComponent(note.slug)}&noteId=${encodeURIComponent(note.id)}&download=1`,
+        '_blank'
+      );
+    } catch {
+      window.open(
+        `/api/notes/file?slug=${encodeURIComponent(note.slug)}&noteId=${encodeURIComponent(note.id)}&download=1`,
+        '_blank'
+      );
+    }
+  };
+
   if (purchased || note.is_free || (user && user.id === note.seller_id)) {
     return (
-      <div className="space-y-2 w-full">
+      <div className="space-y-2.5 w-full">
+        <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>Full Unlocked Access to all {note.page_count} pages!</span>
+        </div>
+
         <Link
           href={`/notes/${note.slug}/read`}
-          className="w-full py-3.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.01]"
+          className="w-full py-3 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.01]"
         >
           <Eye className="w-5 h-5" />
-          <span>Read Online in Secure Reader</span>
+          <span>Read Online in Full Reader</span>
         </Link>
+
+        <button
+          onClick={handleDownload}
+          className="w-full py-3 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 transition-all hover:scale-[1.01] cursor-pointer"
+        >
+          <Download className="w-5 h-5" />
+          <span>Download PDF Note</span>
+        </button>
+
         {!note.is_free && user && user.id !== note.seller_id && (
           <button
             onClick={() => {
@@ -221,7 +260,7 @@ export default function PurchaseButton({ note, buyerId, onSuccess }: PurchaseBut
                 setPurchased(false);
               }
             }}
-            className="w-full text-center text-xs text-slate-400 hover:text-indigo-600 transition-colors py-1"
+            className="w-full text-center text-xs text-slate-400 hover:text-indigo-600 transition-colors py-1 cursor-pointer"
           >
             🧪 [Test Mode] Reset purchase status to test Razorpay payment again
           </button>

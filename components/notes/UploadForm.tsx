@@ -8,6 +8,7 @@ import { uploadNoteAction } from '@/actions/notes';
 import { formatFileSize } from '@/lib/utils';
 import { store } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
+import { savePdfToIndexedDB } from '@/lib/pdf-storage';
 import {
   EDUCATION_LEVELS,
   COURSES_CATALOG,
@@ -173,6 +174,15 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
       setErrorMsg(res.error);
     } else {
       if (res.note) {
+        // Save full original PDF file into IndexedDB for instant reading & downloading
+        if (selectedFile) {
+          try {
+            await savePdfToIndexedDB(res.note.slug, selectedFile);
+            await savePdfToIndexedDB(res.note.id, selectedFile);
+          } catch (storageErr) {
+            console.warn('Could not save PDF to IndexedDB:', storageErr);
+          }
+        }
         // 1. Immediately register in client store and persist to localStorage
         store.saveNoteLocally(res.note);
         // 2. Dispatch event to notify all listening components

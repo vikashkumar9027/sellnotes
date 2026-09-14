@@ -44,16 +44,37 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
       try {
         const bytes = await pdfFile.arrayBuffer();
         const buffer = Buffer.from(bytes);
-        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
         const safeName = `${Date.now()}-${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        const filePath = path.join(uploadsDir, safeName);
-        fs.writeFileSync(filePath, buffer);
+
+        // 1. Try public/uploads (local dev, VPS, persistent server)
+        let written = false;
+        try {
+          const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+          if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+          }
+          fs.writeFileSync(path.join(uploadsDir, safeName), buffer);
+          written = true;
+        } catch {
+          // Ignored if read-only filesystem
+        }
+
+        // 2. Fallback to /tmp/uploads (Vercel serverless writable storage)
+        if (!written) {
+          try {
+            const tmpDir = path.join('/tmp', 'uploads');
+            if (!fs.existsSync(tmpDir)) {
+              fs.mkdirSync(tmpDir, { recursive: true });
+            }
+            fs.writeFileSync(path.join(tmpDir, safeName), buffer);
+          } catch (tmpErr) {
+            console.warn('Could not write to /tmp/uploads:', tmpErr);
+          }
+        }
+
         pdf_path = `/uploads/${safeName}`;
       } catch (fileErr) {
-        console.warn('Could not save uploaded PDF to disk (possibly read-only or serverless):', fileErr);
+        console.warn('Could not process uploaded PDF file:', fileErr);
         pdf_path = `/uploads/${Date.now()}-${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
       }
     }
