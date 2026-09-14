@@ -10,55 +10,63 @@ import {
   Loader2,
   FileText,
   Sparkles,
-  Maximize2,
+  Layers,
+  Lock,
 } from 'lucide-react';
 import { Note, Profile } from '@/types';
 import { getPdfFromIndexedDB, downloadBlobAsFile } from '@/lib/pdf-storage';
 import { toast } from 'sonner';
+import RealPdfCanvasViewer from './RealPdfCanvasViewer';
+import { useRouter } from 'next/navigation';
+import { formatPrice } from '@/lib/utils';
 
 interface SecurePdfReaderProps {
   note: Note;
   currentUser: Profile;
+  hasAccess?: boolean;
 }
 
-export default function SecurePdfReader({ note, currentUser }: SecurePdfReaderProps) {
-  const [pdfUrl, setPdfUrl] = useState<string>('');
+export default function SecurePdfReader({
+  note,
+  currentUser,
+  hasAccess = true,
+}: SecurePdfReaderProps) {
+  const router = useRouter();
+  const [pdfSource, setPdfSource] = useState<string | Blob>('');
   const [loading, setLoading] = useState<boolean>(true);
-  const [isLocalBlob, setIsLocalBlob] = useState<boolean>(false);
   const [downloading, setDownloading] = useState<boolean>(false);
+  const [viewerMode, setViewerMode] = useState<'canvas' | 'native'>('canvas');
+
+  const isAuthor = currentUser?.id === note.seller_id;
+  const isUnlocked = hasAccess || note.is_free || isAuthor;
 
   useEffect(() => {
     let active = true;
-    let createdUrl = '';
 
     const resolvePdf = async () => {
       try {
-        // 1. Try resolving original file from browser IndexedDB
+        // 1. Check local IndexedDB for exact original file
         const localBlob =
           (await getPdfFromIndexedDB(note.slug)) ||
           (await getPdfFromIndexedDB(note.id)) ||
           (await getPdfFromIndexedDB(note.title));
 
         if (localBlob && active) {
-          createdUrl = URL.createObjectURL(localBlob);
-          setPdfUrl(createdUrl);
-          setIsLocalBlob(true);
+          setPdfSource(localBlob);
           setLoading(false);
           return;
         }
 
-        // 2. Fallback to server API endpoint that streams the PDF
+        // 2. Fallback to server route
         const serverUrl = `/api/notes/file?slug=${encodeURIComponent(note.slug)}&noteId=${encodeURIComponent(note.id)}&path=${encodeURIComponent(note.pdf_path || '')}`;
         if (active) {
-          setPdfUrl(serverUrl);
-          setIsLocalBlob(false);
+          setPdfSource(serverUrl);
           setLoading(false);
         }
       } catch (err) {
-        console.warn('Could not resolve PDF blob from local storage:', err);
-        const fallbackUrl = `/api/notes/file?slug=${encodeURIComponent(note.slug)}`;
+        console.warn('Could not resolve PDF blob:', err);
         if (active) {
-          setPdfUrl(fallbackUrl);
+          setPdfSource(`/api/notes/file?slug=${encodeURIComponent(note.slug)}`);
           setLoading(false);
         }
       }
@@ -68,28 +76,29 @@ export default function SecurePdfReader({ note, currentUser }: SecurePdfReaderPr
 
     return () => {
       active = false;
-      if (createdUrl) {
-        URL.revokeObjectURL(createdUrl);
-      }
     };
   }, [note.slug, note.id, note.title, note.pdf_path]);
 
   const handleDownload = async () => {
+    if (!isUnlocked) {
+      toast.error('You need to purchase this note to download the full PDF.');
+      router.push(`/notes/${note.slug}`);
+      return;
+    }
+
     setDownloading(true);
     try {
-      // 1. Try downloading local indexedDB blob directly
       const localBlob =
         (await getPdfFromIndexedDB(note.slug)) ||
         (await getPdfFromIndexedDB(note.id));
 
       if (localBlob) {
         downloadBlobAsFile(localBlob, `${note.title}.pdf`);
-        toast.success('Original PDF downloaded successfully!');
+        toast.success('Downloaded original PDF note!');
         setDownloading(false);
         return;
       }
 
-      // 2. Trigger download through the server API endpoint
       const downloadEndpoint = `/api/notes/file?slug=${encodeURIComponent(note.slug)}&noteId=${encodeURIComponent(note.id)}&download=1`;
       const link = document.createElement('a');
       link.href = downloadEndpoint;
@@ -99,16 +108,27 @@ export default function SecurePdfReader({ note, currentUser }: SecurePdfReaderPr
       document.body.removeChild(link);
       toast.success('PDF download started!');
     } catch {
-      toast.error('Could not initiate download. Opening PDF in new tab...');
-      window.open(pdfUrl, '_blank');
+      toast.error('Could not initiate download. Opening in new tab...');
+      window.open(`/api/notes/file?slug=${encodeURIComponent(note.slug)}&download=1`, '_blank');
     } finally {
       setDownloading(false);
     }
   };
 
+  const handlePurchaseRedirect = () => {
+    router.push(`/notes/${note.slug}`);
+  };
+
+  const nativePdfUrl =
+    typeof pdfSource === 'string'
+      ? pdfSource
+      : pdfSource instanceof Blob
+      ? URL.createObjectURL(pdfSource)
+      : `/api/notes/file?slug=${encodeURIComponent(note.slug)}`;
+
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
-      {/* TOP CONTROL BAR */}
+      {/* TOP BAR */}
       <header className="bg-slate-900 border-b border-slate-800 px-4 py-3 sticky top-0 z-50 flex flex-wrap items-center justify-between gap-4 shadow-xl">
         <div className="flex items-center gap-3">
           <Link
@@ -126,96 +146,121 @@ export default function SecurePdfReader({ note, currentUser }: SecurePdfReaderPr
           </div>
         </div>
 
-        {/* LICENSE BADGE */}
-        <div className="hidden lg:flex items-center gap-2">
-          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-950 border border-indigo-800/80 text-indigo-300 text-xs font-bold shadow-xs">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Full Note Unlocked • Licensed to {currentUser.full_name || 'Student'}</span>
+        {/* UNLOCKED OR SAMPLE STATUS */}
+        <div className="flex items-center gap-2">
+          <span
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
+              isUnlocked
+                ? 'bg-emerald-950 border border-emerald-800 text-emerald-300'
+                : 'bg-amber-950 border border-amber-800 text-amber-300'
+            }`}
+          >
+            {isUnlocked ? (
+              <>
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Full Note Unlocked ({note.page_count} Pages)</span>
+              </>
+            ) : (
+              <>
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Sample Preview: First 4 Pages Free</span>
+              </>
+            )}
           </span>
         </div>
 
-        {/* ACTIONS: DOWNLOAD & FULLSCREEN */}
-        <div className="flex items-center gap-2.5 text-xs">
-          {/* DOWNLOAD BUTTON */}
-          <button
-            onClick={handleDownload}
-            disabled={downloading}
-            className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all hover:scale-105 cursor-pointer disabled:opacity-50"
-            title="Download complete PDF notes to your device"
-          >
-            {downloading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Download className="w-4 h-4" />
-            )}
-            <span>Download PDF</span>
-          </button>
-
-          {/* OPEN FULLSCREEN / NEW TAB */}
-          {pdfUrl && (
-            <a
-              href={pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-colors border border-slate-700"
-              title="Open native browser PDF viewer in full tab"
+        {/* ACTIONS */}
+        <div className="flex items-center gap-2 text-xs">
+          {/* VIEW MODE TOGGLE */}
+          <div className="hidden sm:flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
+            <button
+              onClick={() => setViewerMode('canvas')}
+              className={`py-1 px-2.5 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                viewerMode === 'canvas'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Fullscreen Tab</span>
-            </a>
+              Page View
+            </button>
+            <button
+              onClick={() => setViewerMode('native')}
+              className={`py-1 px-2.5 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                viewerMode === 'native'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Scroll View
+            </button>
+          </div>
+
+          {/* DOWNLOAD BUTTON (UNLOCKED ONLY) */}
+          {isUnlocked ? (
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all hover:scale-105 cursor-pointer disabled:opacity-50"
+              title="Download complete PDF notes"
+            >
+              {downloading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              <span>Download PDF</span>
+            </button>
+          ) : (
+            <button
+              onClick={handlePurchaseRedirect}
+              className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all hover:scale-105 cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>Unlock All Pages ({formatPrice(note.price)})</span>
+            </button>
           )}
+
+          {/* FULLSCREEN NEW TAB */}
+          <a
+            href={nativePdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-colors border border-slate-700"
+            title="Open in Fullscreen Browser Tab"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
         </div>
       </header>
 
-      {/* EMBEDDED REAL PDF VIEWER */}
-      <main className="flex-1 p-2 sm:p-4 md:p-6 flex flex-col items-center justify-center relative bg-slate-950">
+      {/* MAIN VIEWER AREA */}
+      <main className="flex-1 p-2 sm:p-6 flex flex-col items-center justify-center max-w-6xl w-full mx-auto">
         {loading ? (
           <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-3">
             <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
-            <p className="text-sm font-bold text-slate-300">Loading Handwritten PDF Document...</p>
-            <p className="text-xs text-slate-500">Preparing all {note.page_count} pages for reading</p>
+            <p className="text-sm font-bold text-slate-300">Loading Handwritten Notes...</p>
+            <p className="text-xs text-slate-500">Preparing high-resolution PDF pages</p>
           </div>
-        ) : pdfUrl ? (
-          <div className="w-full h-full min-h-[85vh] flex-1 rounded-2xl overflow-hidden shadow-2xl border border-slate-800 bg-white relative">
+        ) : viewerMode === 'canvas' ? (
+          <RealPdfCanvasViewer
+            note={note}
+            pdfSource={pdfSource}
+            hasAccess={isUnlocked}
+            onPurchaseClick={handlePurchaseRedirect}
+            onDownload={handleDownload}
+            maxDemoPages={4}
+          />
+        ) : (
+          /* NATIVE IFRAME SCROLL VIEW */
+          <div className="w-full h-[85vh] rounded-3xl overflow-hidden shadow-2xl border border-slate-800 bg-white relative">
             <iframe
-              src={`${pdfUrl}#toolbar=1&navpanes=1&scrollbar=1`}
-              className="w-full h-full min-h-[85vh] border-0"
+              src={`${nativePdfUrl}#toolbar=1&navpanes=1`}
+              className="w-full h-full border-0"
               title={note.title}
             />
           </div>
-        ) : (
-          <div className="p-8 text-center space-y-4 max-w-md bg-slate-900 rounded-3xl border border-slate-800">
-            <FileText className="w-12 h-12 text-rose-400 mx-auto" />
-            <h3 className="text-lg font-bold">PDF Could Not Be Embedded</h3>
-            <p className="text-xs text-slate-400">
-              Your browser may not support inline PDF embedding. You can download the PDF file directly to read offline.
-            </p>
-            <button
-              onClick={handleDownload}
-              className="py-2.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs"
-            >
-              Download PDF Note
-            </button>
-          </div>
         )}
       </main>
-
-      {/* FOOTER BAR */}
-      <footer className="bg-slate-900 border-t border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between text-[11px] text-slate-400">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-          <span>NoteMart Complete Study Viewer &bull; All pages unlocked &amp; available for reading</span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleDownload}
-            className="text-emerald-400 hover:underline font-bold flex items-center gap-1"
-          >
-            <Download className="w-3 h-3" /> Save / Download Copy
-          </button>
-        </div>
-      </footer>
     </div>
   );
 }
