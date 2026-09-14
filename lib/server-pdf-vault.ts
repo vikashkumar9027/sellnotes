@@ -35,7 +35,7 @@ export function detectPdfPageCountFromBuffer(buffer: Buffer): number {
     const pagesMatches = content.match(/\/Type\s*\/Pages\b[\s\S]*?\/Count\s+(\d+)/);
     if (pagesMatches && pagesMatches[1]) {
       const count = parseInt(pagesMatches[1], 10);
-      if (count > 0 && count < 5000) {
+      if (count > 0 && count <= 10000) {
         return count;
       }
     }
@@ -43,7 +43,7 @@ export function detectPdfPageCountFromBuffer(buffer: Buffer): number {
     const countMatches = content.match(/\/Count\s+(\d+)[\s\S]*?\/Type\s*\/Pages\b/);
     if (countMatches && countMatches[1]) {
       const count = parseInt(countMatches[1], 10);
-      if (count > 0 && count < 5000) {
+      if (count > 0 && count <= 10000) {
         return count;
       }
     }
@@ -200,4 +200,48 @@ export async function getOriginalPdfBuffer(
   }
 
   return null;
+}
+
+/**
+ * Delete the physical PDF file from storage tiers when a note is deleted.
+ */
+export async function deletePhysicalPdf(pdfPath?: string | null): Promise<boolean> {
+  if (!pdfPath) return true;
+
+  // If remote Supabase URL
+  if (pdfPath.startsWith('http://') || pdfPath.startsWith('https://')) {
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const isRealSupabase = supabaseUrl && !supabaseUrl.includes('demo.supabase.co');
+      if (isRealSupabase) {
+        const supabase = createAdminClient();
+        const baseName = path.basename(pdfPath);
+        await supabase.storage.from('notes').remove([`pdfs/${baseName}`]);
+      }
+    } catch (e) {
+      console.warn('Could not delete from Supabase storage:', e);
+    }
+  }
+
+  const cleanPath = pdfPath.startsWith('/') ? pdfPath.slice(1) : pdfPath;
+  const baseName = path.basename(cleanPath);
+
+  const targets = [
+    path.join(process.cwd(), 'public', cleanPath),
+    path.join(process.cwd(), 'public', 'uploads', baseName),
+    path.join(process.cwd(), 'data', 'uploads', baseName),
+    path.join('/tmp', cleanPath),
+    path.join('/tmp', 'uploads', baseName),
+  ];
+
+  for (const t of targets) {
+    try {
+      if (fs.existsSync(t)) {
+        fs.unlinkSync(t);
+      }
+    } catch {
+      // Ignore if cannot unlink (e.g. read-only filesystem)
+    }
+  }
+  return true;
 }

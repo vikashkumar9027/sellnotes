@@ -450,6 +450,7 @@ export const store = {
   },
   deleteNote: (noteId: string) => {
     notesState = notesState.filter((n) => n.id !== noteId);
+    globalStore.notesState = notesState;
     if (typeof window !== 'undefined') {
       const local = getLocalSavedNotes();
       saveLocalUploadedNotes(local.filter((n) => n.id !== noteId));

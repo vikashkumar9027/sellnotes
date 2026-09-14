@@ -53,12 +53,54 @@ export default function RealPdfCanvasViewer({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageInput, setPageInput] = useState<string>('1');
   const [totalPages, setTotalPages] = useState<number>(note.page_count || 4);
   const [zoom, setZoom] = useState<number>(compact ? 100 : 120);
   const [renderingPage, setRenderingPage] = useState<boolean>(false);
 
   const isUnlocked = hasAccess || note.is_free;
   const allowedPageLimit = isUnlocked ? totalPages : Math.min(maxDemoPages, totalPages);
+
+  useEffect(() => {
+    setPageInput(String(currentPage));
+  }, [currentPage]);
+
+  const handlePageInputSubmit = () => {
+    const parsed = parseInt(pageInput, 10);
+    if (!isNaN(parsed) && parsed >= 1 && parsed <= totalPages) {
+      setCurrentPage(parsed);
+    } else {
+      setPageInput(String(currentPage));
+    }
+  };
+
+  const getVisiblePages = () => {
+    if (totalPages <= 24) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const set = new Set<number>();
+    set.add(1);
+    if (totalPages >= 2) set.add(2);
+    if (totalPages >= 3) set.add(3);
+
+    for (let i = Math.max(1, currentPage - 4); i <= Math.min(totalPages, currentPage + 4); i++) {
+      set.add(i);
+    }
+
+    if (totalPages >= 3) set.add(totalPages - 2);
+    if (totalPages >= 2) set.add(totalPages - 1);
+    set.add(totalPages);
+
+    const sorted = Array.from(set).sort((a, b) => a - b);
+    const result: (number | string)[] = [];
+    for (let i = 0; i < sorted.length; i++) {
+      result.push(sorted[i]);
+      if (i < sorted.length - 1 && sorted[i + 1] - sorted[i] > 1) {
+        result.push(`ellipsis-${sorted[i]}`);
+      }
+    }
+    return result;
+  };
 
   // 1. Ensure PDF.js is loaded in browser
   const loadPdfJsLibrary = (): Promise<boolean> => {
@@ -258,7 +300,7 @@ export default function RealPdfCanvasViewer({
           </span>
         </div>
 
-        {/* CENTER: PAGE NAVIGATOR */}
+        {/* CENTER: PAGE NAVIGATOR & DIRECT JUMP */}
         <div className="flex items-center gap-2">
           <button
             onClick={handlePrev}
@@ -269,9 +311,23 @@ export default function RealPdfCanvasViewer({
             <ChevronLeft className="w-4 h-4" />
           </button>
 
-          <span className="font-mono text-xs font-extrabold text-slate-200 bg-slate-900 px-3 py-1 rounded-lg border border-slate-800 min-w-[100px] text-center">
-            Page {currentPage} / {totalPages}
-          </span>
+          <div className="flex items-center gap-1 font-mono text-xs font-extrabold text-slate-200 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">
+            <span className="text-slate-400 text-[10px]">Page</span>
+            <input
+              type="number"
+              min={1}
+              max={totalPages}
+              value={pageInput}
+              onChange={(e) => setPageInput(e.target.value)}
+              onBlur={handlePageInputSubmit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handlePageInputSubmit();
+              }}
+              className="w-14 bg-slate-800 text-center text-white rounded px-1 py-0.5 border border-slate-700 text-xs font-bold focus:outline-hidden focus:border-indigo-500"
+              title="Type page number and press Enter"
+            />
+            <span className="text-slate-400">/ {totalPages}</span>
+          </div>
 
           <button
             onClick={handleNext}
@@ -391,13 +447,21 @@ export default function RealPdfCanvasViewer({
         )}
       </div>
 
-      {/* PAGE THUMBNAILS STRIP */}
+      {/* PAGE THUMBNAILS STRIP WITH WINDOWING SUPPORT UP TO 5,000 PAGES */}
       {totalPages > 1 && (
         <div className="bg-slate-950 px-4 py-2 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto">
           <span className="text-[10px] font-extrabold text-slate-500 uppercase shrink-0 mr-1">
-            Jump To Page:
+            Jump To:
           </span>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((pNum) => {
+          {getVisiblePages().map((item) => {
+            if (typeof item === 'string') {
+              return (
+                <span key={item} className="px-1 text-slate-600 font-extrabold text-xs select-none">
+                  &bull;&bull;&bull;
+                </span>
+              );
+            }
+            const pNum = item;
             const isLocked = !isUnlocked && pNum > allowedPageLimit;
             const isCurrent = pNum === currentPage;
             return (

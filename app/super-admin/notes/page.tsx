@@ -1,19 +1,34 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { store } from '@/lib/store';
 import { moderateNoteSuperAdminAction } from '@/actions/super-admin';
+import { deleteNoteAction } from '@/actions/notes';
+import { deletePdfFromIndexedDB } from '@/lib/pdf-storage';
 import { formatPrice } from '@/lib/utils';
-import { Search, CheckCircle2, XCircle, Trash2, Eye, Download, BookOpen, ExternalLink } from 'lucide-react';
+import { Note } from '@/types';
+import { Search, CheckCircle2, XCircle, Trash2, Eye, Download, BookOpen, ExternalLink, Loader2 } from 'lucide-react';
 
 export default function SuperAdminNotesPage() {
+  const [notesList, setNotesList] = useState<Note[]>(() => store.getNotes());
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const notes = store.getNotes();
   const purchases = store.getAllPurchases();
+
+  useEffect(() => {
+    fetch('/api/notes')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.notes && Array.isArray(data.notes)) {
+          store.syncNotes(data.notes);
+          setNotesList([...store.getNotes()]);
+        }
+      })
+      .catch((err) => console.warn('Failed to sync super admin notes:', err));
+  }, []);
 
   const handleModerate = async (noteId: string, status: 'approved' | 'rejected') => {
     let reason: string | undefined;
@@ -25,10 +40,34 @@ export default function SuperAdminNotesPage() {
 
     setProcessingId(noteId);
     await moderateNoteSuperAdminAction(noteId, status, reason);
+    setNotesList([...store.getNotes()]);
     setProcessingId(null);
   };
 
-  const filteredNotes = notes.filter((n) => {
+  const handleDeleteNote = async (note: Note) => {
+    if (!confirm(`Are you sure you want to permanently delete "${note.title}"? This will delete the database record and the original PDF file from all storage tiers.`)) {
+      return;
+    }
+
+    setProcessingId(note.id);
+    try {
+      const res = await deleteNoteAction(note.id);
+      if (res.error) {
+        alert(res.error);
+      } else {
+        await deletePdfFromIndexedDB([note.slug, note.id, note.pdf_path, note.storage_key, note.title]);
+        store.deleteNote(note.id);
+        setNotesList((prev) => prev.filter((n) => n.id !== note.id));
+      }
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+      alert('Failed to delete note.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const filteredNotes = notesList.filter((n) => {
     const matchesSearch =
       n.title.toLowerCase().includes(search.toLowerCase()) ||
       n.subject.toLowerCase().includes(search.toLowerCase()) ||
@@ -37,6 +76,7 @@ export default function SuperAdminNotesPage() {
     const matchesStatus = statusFilter === 'all' || n.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
 
   return (
     <div className="space-y-6">
@@ -171,6 +211,20 @@ export default function SuperAdminNotesPage() {
                             Reject
                           </button>
                         )}
+
+                        <button
+                          onClick={() => handleDeleteNote(note)}
+                          disabled={processingId === note.id}
+                          className="px-2.5 py-1 rounded-lg bg-red-950 hover:bg-red-900 text-red-300 text-[11px] font-bold border border-red-800 disabled:opacity-50 flex items-center gap-1 transition-colors"
+                          title="Permanently Delete Note"
+                        >
+                          {processingId === note.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3 h-3" />
+                          )}
+                          <span>Delete</span>
+                        </button>
                       </div>
                     </td>
                   </tr>

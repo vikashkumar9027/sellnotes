@@ -1,22 +1,60 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { store } from '@/lib/store';
 import { moderateNoteAction } from '@/actions/admin';
+import { deleteNoteAction } from '@/actions/notes';
+import { deletePdfFromIndexedDB } from '@/lib/pdf-storage';
 import { Note, NoteStatus } from '@/types';
 import { formatPrice, formatDate, getStatusBadgeClass } from '@/lib/utils';
-import { CheckCircle2, XCircle, Eye, Trash2, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, XCircle, Eye, Trash2, ShieldAlert, Loader2 } from 'lucide-react';
 
 export default function AdminNotesPage() {
-  const [notes, setNotes] = useState(() => store.getNotes());
+  const [notes, setNotes] = useState<Note[]>(() => store.getNotes());
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [targetNoteId, setTargetNoteId] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/notes')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.notes && Array.isArray(data.notes)) {
+          store.syncNotes(data.notes);
+          setNotes([...store.getNotes()]);
+        }
+      })
+      .catch((err) => console.warn('Failed to sync admin notes:', err));
+  }, []);
 
   const handleModerate = async (noteId: string, status: NoteStatus, reason?: string) => {
     await moderateNoteAction(noteId, status, reason);
     setNotes([...store.getNotes()]);
+  };
+
+  const handleDeleteNote = async (note: Note) => {
+    if (!confirm(`Are you sure you want to permanently delete "${note.title}"? As an admin, this will delete the note and its PDF from all systems.`)) {
+      return;
+    }
+
+    setDeletingId(note.id);
+    try {
+      const res = await deleteNoteAction(note.id);
+      if (res.error) {
+        alert(res.error);
+      } else {
+        await deletePdfFromIndexedDB([note.slug, note.id, note.pdf_path, note.storage_key, note.title]);
+        store.deleteNote(note.id);
+        setNotes((prev) => prev.filter((n) => n.id !== note.id));
+      }
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+      alert('Failed to delete note.');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleRejectSubmit = (e: React.FormEvent) => {
@@ -26,6 +64,7 @@ export default function AdminNotesPage() {
     setRejectModalOpen(false);
     setRejectionReason('');
   };
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -97,6 +136,19 @@ export default function AdminNotesPage() {
                         <XCircle className="w-3.5 h-3.5" />
                       </button>
                     )}
+
+                    <button
+                      onClick={() => handleDeleteNote(note)}
+                      disabled={deletingId === note.id}
+                      className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900 inline-block font-bold disabled:opacity-50 transition-colors"
+                      title="Permanently Delete Note"
+                    >
+                      {deletingId === note.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
+                    </button>
                   </td>
                 </tr>
               ))}

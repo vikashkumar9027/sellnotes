@@ -6,7 +6,9 @@ import { store } from '@/lib/store';
 import { saveNotesToDisk } from '@/lib/notes-storage';
 import { revalidatePath } from 'next/cache';
 import { ReportSchema, ReviewSchema } from '@/lib/validators';
-import { storeOriginalPdf, isValidPdfBuffer } from '@/lib/server-pdf-vault';
+import { storeOriginalPdf, isValidPdfBuffer, deletePhysicalPdf } from '@/lib/server-pdf-vault';
+import { getCurrentUserAction } from '@/actions/auth';
+import { requireSuperAdmin } from '@/lib/super-admin-auth';
 
 export async function uploadNoteAction(formData: FormData, sellerId: string) {
   try {
@@ -166,3 +168,71 @@ export async function getSecureDownloadUrl(userId: string, noteId: string) {
     return { error: 'Failed to generate download URL' };
   }
 }
+
+export async function deleteNoteAction(noteId: string, requesterUserId?: string) {
+  try {
+    if (!noteId) {
+      return { error: 'Note ID is required' };
+    }
+
+    const note = store.getNotes().find((n) => n.id === noteId);
+    if (!note) {
+      return { error: 'Note not found' };
+    }
+
+    // Resolve requester profile
+    let user = requesterUserId ? store.getUserById(requesterUserId) : null;
+    if (!user) {
+      user = await getCurrentUserAction();
+    }
+
+    // Super-admin check
+    let isSuperAdmin = false;
+    try {
+      const superAuth = await requireSuperAdmin();
+      if (superAuth.authorized) isSuperAdmin = true;
+    } catch {}
+
+    const isAdmin =
+      isSuperAdmin ||
+      user?.role === 'admin' ||
+      user?.email === 'admin@notemart.com' ||
+      user?.email === 'vikash@notemart.com';
+
+    const isOwner = user && (note.seller_id === user.id || note.seller?.email === user.email);
+
+    if (!isAdmin && !isOwner) {
+      return {
+        error: 'Unauthorized: You are only permitted to delete notes that you uploaded to your account.',
+      };
+    }
+
+    // 1. Physically remove PDF file from filesystem / storage vault
+    await deletePhysicalPdf(note.pdf_path);
+
+    // 2. Remove from in-memory state
+    store.deleteNote(noteId);
+
+    // 3. Persist updated note list to disk
+    saveNotesToDisk(store.getNotes());
+
+    // 4. Revalidate pages
+    revalidatePath('/notes');
+    revalidatePath('/dashboard/seller/notes');
+    revalidatePath('/admin/notes');
+    revalidatePath('/super-admin/notes');
+    revalidatePath(`/notes/${note.slug}`);
+    revalidatePath('/');
+
+    return {
+      success: true,
+      deletedNoteId: noteId,
+      pdfPath: note.pdf_path,
+      slug: note.slug,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to delete note';
+    return { error: message };
+  }
+}
+

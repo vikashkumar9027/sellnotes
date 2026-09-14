@@ -154,7 +154,7 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   min_note_price NUMERIC(10, 2) DEFAULT 0.00,
   max_note_price NUMERIC(10, 2) DEFAULT 2000.00,
   min_withdrawal_amount NUMERIC(10, 2) DEFAULT 100.00,
-  max_pdf_size_mb INT DEFAULT 2048,
+  max_pdf_size_mb INT DEFAULT 5120,
   auto_approval BOOLEAN DEFAULT false,
   maintenance_mode BOOLEAN DEFAULT false,
   route_enabled BOOLEAN DEFAULT false,
@@ -170,8 +170,8 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
 
 -- Insert default system settings
 INSERT INTO public.system_settings (id, platform_commission, min_note_price, max_note_price, min_withdrawal_amount, max_pdf_size_mb, route_enabled, withdrawal_enabled)
-VALUES (1, 25.00, 0.00, 2000.00, 100.00, 2048, false, true)
-ON CONFLICT (id) DO UPDATE SET platform_commission = 25.00;
+VALUES (1, 25.00, 0.00, 2000.00, 100.00, 5120, false, true)
+ON CONFLICT (id) DO UPDATE SET platform_commission = 25.00, max_pdf_size_mb = 5120;
 
 
 -- INDEXES FOR PERFORMANCE

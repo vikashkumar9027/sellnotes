@@ -3,15 +3,18 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { store } from '@/lib/store';
-import { PlusCircle, Eye, Trash2, CheckCircle2 } from 'lucide-react';
+import { PlusCircle, Eye, Trash2, CheckCircle2, Loader2 } from 'lucide-react';
 import { formatPrice, formatDate, getStatusBadgeClass } from '@/lib/utils';
 import { Note } from '@/types';
 import { useAuth } from '@/context/AuthContext';
+import { deleteNoteAction } from '@/actions/notes';
+import { deletePdfFromIndexedDB } from '@/lib/pdf-storage';
 
 export default function SellerNotesPage() {
   const { user } = useAuth();
   const sellerId = user?.id || 'user-seller-1';
   const [notes, setNotes] = useState<Note[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const refreshNotes = () => {
     const all = store.getNotes();
@@ -48,12 +51,37 @@ export default function SellerNotesPage() {
     };
   }, [sellerId, user]);
 
-  const handleDelete = (noteId: string) => {
-    if (confirm('Are you sure you want to delete this note?')) {
-      store.deleteNote(noteId);
-      refreshNotes();
+  const handleDelete = async (note: Note) => {
+    const isOwner = user && (note.seller_id === user.id || note.seller?.email === user.email);
+    const isAdmin = user?.role === 'admin' || user?.email === 'admin@notemart.com';
+    if (!isOwner && !isAdmin && sellerId !== 'user-seller-1') {
+      alert('You can only delete notes that you uploaded to your account.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete "${note.title}"? This will permanently delete the note and its original PDF file from the server.`)) {
+      return;
+    }
+
+    setDeletingId(note.id);
+    try {
+      const res = await deleteNoteAction(note.id, user?.id);
+      if (res.error) {
+        alert(res.error);
+      } else {
+        await deletePdfFromIndexedDB([note.slug, note.id, note.pdf_path, note.storage_key, note.title]);
+        store.deleteNote(note.id);
+        refreshNotes();
+        window.dispatchEvent(new Event('notemart_notes_updated'));
+      }
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+      alert('Failed to delete note. Please try again.');
+    } finally {
+      setDeletingId(null);
     }
   };
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -108,11 +136,16 @@ export default function SellerNotesPage() {
                         <Eye className="w-3.5 h-3.5" /> View Live
                       </Link>
                       <button
-                        onClick={() => handleDelete(note.id)}
-                        className="p-2 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 inline-block"
+                        onClick={() => handleDelete(note)}
+                        disabled={deletingId === note.id}
+                        className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 inline-block disabled:opacity-50 transition-colors"
                         title="Delete Note"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        {deletingId === note.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
                       </button>
                     </td>
                   </tr>

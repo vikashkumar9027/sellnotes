@@ -463,7 +463,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   min_note_price: 0,
   max_note_price: 2000,
   min_withdrawal_amount: 100,
-  max_pdf_size_mb: 2048,
+  max_pdf_size_mb: 5120, // 5GB (5120 MB) maximum file upload
   auto_approval: true,
   maintenance_mode: false,
   route_enabled: false,

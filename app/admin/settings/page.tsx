@@ -16,7 +16,7 @@ export default function AdminSettingsPage() {
   const [minPrice, setMinPrice] = useState(currentSettings.min_note_price ?? 0);
   const [maxPrice, setMaxPrice] = useState(currentSettings.max_note_price ?? 2000);
   const [minWithdrawal, setMinWithdrawal] = useState(currentSettings.min_withdrawal_amount ?? 100);
-  const [maxPdfSize, setMaxPdfSize] = useState(currentSettings.max_pdf_size_mb ?? 2048);
+  const [maxPdfSize, setMaxPdfSize] = useState(currentSettings.max_pdf_size_mb ?? 5120);
   const [autoApproval, setAutoApproval] = useState(currentSettings.auto_approval ?? true);
   const [maintenance, setMaintenance] = useState(currentSettings.maintenance_mode ?? false);
 

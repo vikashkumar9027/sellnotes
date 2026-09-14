@@ -115,8 +115,9 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
         setDetectedPageCount(0);
         return;
       }
-      if (file.size > settings.max_pdf_size_mb * 1024 * 1024) {
-        setErrorMsg(`File size exceeds maximum allowed limit of ${settings.max_pdf_size_mb} MB.`);
+      const maxAllowedMb = Math.max(settings?.max_pdf_size_mb || 5120, 5120);
+      if (file.size > maxAllowedMb * 1024 * 1024) {
+        setErrorMsg(`File size exceeds maximum allowed limit of ${maxAllowedMb} MB (5 GB).`);
         setSelectedFile(null);
         setDetectedPageCount(0);
         return;
@@ -255,7 +256,7 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
           <FileText className="w-5 h-5 text-indigo-600" /> 1. Upload Handwritten PDF File *
         </h3>
         <p className="text-xs text-slate-500">
-          Upload clear, legible handwritten PDF notes. Maximum allowed file size: {settings.max_pdf_size_mb} MB (2GB).
+          Upload clear, legible handwritten PDF notes. Maximum allowed file size: 5 GB (5120 MB). Up to 5,000 pages supported in original format.
         </p>
 
         <div className="relative border-2 border-dashed border-indigo-200 dark:border-slate-700 hover:border-indigo-500 rounded-2xl p-8 text-center bg-slate-50/50 dark:bg-slate-800/50 transition-colors">
@@ -540,9 +541,10 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
               type="number"
               name="page_count"
               min="1"
+              max="5000"
               value={detectedPageCount || ''}
               onChange={(e) => setDetectedPageCount(Number(e.target.value))}
-              placeholder="e.g. 50"
+              placeholder="e.g. 50 (up to 5,000 pages)"
               required
               className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-extrabold focus:outline-hidden"
             />

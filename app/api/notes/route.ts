@@ -41,3 +41,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { noteId, userId } = body;
+
+    if (!noteId) {
+      return NextResponse.json({ error: 'Note ID is required' }, { status: 400 });
+    }
+
+    const { deleteNoteAction } = await import('@/actions/notes');
+    const result = await deleteNoteAction(noteId, userId);
+
+    if (result.error) {
+      return NextResponse.json({ error: result.error }, { status: 403 });
+    }
+
+    return NextResponse.json({ success: true, ...result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to delete note';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+

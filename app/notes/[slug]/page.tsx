@@ -1,18 +1,20 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { store } from '@/lib/store';
 import PdfPreviewer from '@/components/notes/PdfPreviewer';
 import PurchaseButton from '@/components/notes/PurchaseButton';
 import { formatPrice, formatFileSize, formatDate } from '@/lib/utils';
-import { Star, Download, Eye, GraduationCap, ShieldCheck, Heart, Flag, Share2, BookOpen, User, CheckCircle2, AlertTriangle, Send, Loader2 } from 'lucide-react';
-import { addReviewAction, reportNoteAction } from '@/actions/notes';
+import { Star, Download, Eye, GraduationCap, ShieldCheck, Heart, Flag, Share2, BookOpen, User, CheckCircle2, AlertTriangle, Send, Loader2, Trash2 } from 'lucide-react';
+import { addReviewAction, reportNoteAction, deleteNoteAction } from '@/actions/notes';
+import { deletePdfFromIndexedDB } from '@/lib/pdf-storage';
 import { useAuth } from '@/context/AuthContext';
 import { Note } from '@/types';
 
 export default function NoteDetailsPage() {
+  const router = useRouter();
   const params = useParams();
   const slug = params.slug as string;
   const { user } = useAuth();
@@ -108,6 +110,36 @@ export default function NoteDetailsPage() {
     setReviewText('');
     alert('Thank you! Your review has been published.');
   };
+
+  const isOwner = Boolean(user && (note.seller_id === user.id || note.seller?.email === user.email));
+  const isAdmin = Boolean(user && (user.role === 'admin' || user.email === 'admin@notemart.com' || user.email === 'vikash@notemart.com'));
+  const canDelete = isOwner || isAdmin;
+  const [deletingNote, setDeletingNote] = useState(false);
+
+  const handleDeleteNote = async () => {
+    if (!confirm(`Are you sure you want to permanently delete "${note.title}"? This will delete the note record and its original PDF file from the server.`)) {
+      return;
+    }
+
+    setDeletingNote(true);
+    try {
+      const res = await deleteNoteAction(note.id, user?.id);
+      if (res.error) {
+        alert(res.error);
+        setDeletingNote(false);
+      } else {
+        await deletePdfFromIndexedDB([note.slug, note.id, note.pdf_path, note.storage_key, note.title]);
+        store.deleteNote(note.id);
+        alert('Note and its PDF file have been deleted successfully.');
+        router.push(isAdmin ? '/admin/notes' : '/dashboard/seller/notes');
+      }
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+      alert('Failed to delete note.');
+      setDeletingNote(false);
+    }
+  };
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
@@ -216,6 +248,25 @@ export default function NoteDetailsPage() {
                 <Flag className="w-4 h-4" /> Report
               </button>
             </div>
+
+            {/* AUTHOR OR ADMIN DELETE ACTION */}
+            {canDelete && (
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  onClick={handleDeleteNote}
+                  disabled={deletingNote}
+                  className="w-full py-2.5 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 font-extrabold text-xs flex items-center justify-center gap-2 border border-rose-200 dark:border-rose-900 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+                  title="Permanently Delete Note"
+                >
+                  {deletingNote ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  <span>{isAdmin && !isOwner ? 'Delete Note (Admin Privileges)' : 'Delete Uploaded Note'}</span>
+                </button>
+              </div>
+            )}
 
             {/* SELLER CARD */}
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">

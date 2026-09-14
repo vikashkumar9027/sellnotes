@@ -109,13 +109,13 @@ export async function detectClientPdfPageCount(file: File): Promise<number> {
     const pagesMatch = text.match(/\/Type\s*\/Pages\b[\s\S]*?\/Count\s+(\d+)/);
     if (pagesMatch && pagesMatch[1]) {
       const count = parseInt(pagesMatch[1], 10);
-      if (count > 0 && count < 5000) return count;
+      if (count > 0 && count <= 10000) return count;
     }
 
     const countMatch = text.match(/\/Count\s+(\d+)[\s\S]*?\/Type\s*\/Pages\b/);
     if (countMatch && countMatch[1]) {
       const count = parseInt(countMatch[1], 10);
-      if (count > 0 && count < 5000) return count;
+      if (count > 0 && count <= 10000) return count;
     }
 
     const pageMatches = text.match(/\/Type\s*\/Page\b(?!\s*s)/g);
@@ -126,4 +126,31 @@ export async function detectClientPdfPageCount(file: File): Promise<number> {
     console.warn('Could not detect page count client-side:', err);
   }
   return 1;
+}
+
+/**
+ * Remove a PDF and all its cached keys from client-side IndexedDB when deleted.
+ */
+export async function deletePdfFromIndexedDB(
+  keyOrKeys: (string | undefined | null) | (string | undefined | null)[]
+): Promise<void> {
+  if (typeof window === 'undefined' || !keyOrKeys) return;
+  const rawList = Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys];
+  const keys = rawList.filter((k): k is string => typeof k === 'string' && k.trim().length > 0);
+  if (keys.length === 0) return;
+
+  try {
+    const db = await openPdfDatabase();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      for (const k of keys) {
+        store.delete(k.trim());
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch (err) {
+    console.warn('Could not delete PDF from IndexedDB:', err);
+  }
 }
