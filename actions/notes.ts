@@ -9,6 +9,7 @@ import { ReportSchema, ReviewSchema } from '@/lib/validators';
 import { storeOriginalPdf, isValidPdfBuffer, deletePhysicalPdf } from '@/lib/server-pdf-vault';
 import { getCurrentUserAction } from '@/actions/auth';
 import { requireSuperAdmin } from '@/lib/super-admin-auth';
+import { upsertNoteInSupabase, deleteNoteFromSupabase } from '@/lib/supabase-db';
 
 export async function uploadNoteAction(formData: FormData, sellerId: string) {
   try {
@@ -99,6 +100,9 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
     );
 
     saveNotesToDisk(store.getNotes());
+
+    // Sync to Supabase PostgreSQL table if configured
+    await upsertNoteInSupabase(newNote);
 
     revalidatePath('/notes');
     revalidatePath('/categories');
@@ -216,7 +220,10 @@ export async function deleteNoteAction(noteId: string, requesterUserId?: string)
     // 3. Persist updated note list to disk
     saveNotesToDisk(store.getNotes());
 
-    // 4. Revalidate pages
+    // 4. Delete from Supabase PostgreSQL if configured
+    await deleteNoteFromSupabase(noteId);
+
+    // 5. Revalidate pages
     revalidatePath('/notes');
     revalidatePath('/dashboard/seller/notes');
     revalidatePath('/admin/notes');

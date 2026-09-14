@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. PROFILES TABLE
 CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   full_name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   avatar_url TEXT,
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 -- 2. CATEGORIES TABLE
 CREATE TABLE IF NOT EXISTS public.categories (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   name TEXT UNIQUE NOT NULL,
   slug TEXT UNIQUE NOT NULL,
   description TEXT,
@@ -31,9 +31,9 @@ CREATE TABLE IF NOT EXISTS public.categories (
 
 -- 3. NOTES TABLE
 CREATE TABLE IF NOT EXISTS public.notes (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  seller_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  seller_id TEXT NOT NULL,
+  category_id TEXT,
   title TEXT NOT NULL,
   slug TEXT UNIQUE NOT NULL,
   description TEXT NOT NULL,
@@ -63,10 +63,10 @@ CREATE TABLE IF NOT EXISTS public.notes (
 
 -- 4. TRANSACTIONS TABLE
 CREATE TABLE IF NOT EXISTS public.transactions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  buyer_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  seller_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  note_id UUID REFERENCES public.notes(id) ON DELETE CASCADE NOT NULL,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  buyer_id TEXT NOT NULL,
+  seller_id TEXT NOT NULL,
+  note_id TEXT NOT NULL,
   razorpay_order_id TEXT NOT NULL,
   razorpay_payment_id TEXT,
   amount NUMERIC(10, 2) NOT NULL,
@@ -77,11 +77,11 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 
 -- 5. PURCHASES TABLE
 CREATE TABLE IF NOT EXISTS public.purchases (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  buyer_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  seller_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  note_id UUID REFERENCES public.notes(id) ON DELETE CASCADE NOT NULL,
-  transaction_id UUID REFERENCES public.transactions(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  buyer_id TEXT NOT NULL,
+  seller_id TEXT NOT NULL,
+  note_id TEXT NOT NULL,
+  transaction_id TEXT,
   amount NUMERIC(10, 2) NOT NULL,
   platform_fee NUMERIC(10, 2) NOT NULL,
   seller_amount NUMERIC(10, 2) NOT NULL,
@@ -92,10 +92,10 @@ CREATE TABLE IF NOT EXISTS public.purchases (
 
 -- 6. REVIEWS TABLE
 CREATE TABLE IF NOT EXISTS public.reviews (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  note_id UUID REFERENCES public.notes(id) ON DELETE CASCADE NOT NULL,
-  purchase_id UUID REFERENCES public.purchases(id) ON DELETE SET NULL,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id TEXT NOT NULL,
+  note_id TEXT NOT NULL,
+  purchase_id TEXT,
   rating INT CHECK (rating >= 1 AND rating <= 5) NOT NULL,
   review TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -104,18 +104,18 @@ CREATE TABLE IF NOT EXISTS public.reviews (
 
 -- 7. WISHLIST TABLE
 CREATE TABLE IF NOT EXISTS public.wishlist (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  note_id UUID REFERENCES public.notes(id) ON DELETE CASCADE NOT NULL,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id TEXT NOT NULL,
+  note_id TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT unique_user_wishlist UNIQUE (user_id, note_id)
 );
 
 -- 8. REPORTS TABLE
 CREATE TABLE IF NOT EXISTS public.reports (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  reporter_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  note_id UUID REFERENCES public.notes(id) ON DELETE CASCADE NOT NULL,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  reporter_id TEXT NOT NULL,
+  note_id TEXT NOT NULL,
   reason TEXT NOT NULL,
   description TEXT NOT NULL,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'dismissed', 'actioned')),
@@ -125,8 +125,8 @@ CREATE TABLE IF NOT EXISTS public.reports (
 
 -- 9. WITHDRAWALS TABLE
 CREATE TABLE IF NOT EXISTS public.withdrawals (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  seller_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  seller_id TEXT NOT NULL,
   amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
   payment_method TEXT NOT NULL CHECK (payment_method IN ('upi', 'bank_transfer')),
   payment_details TEXT NOT NULL,
@@ -138,8 +138,8 @@ CREATE TABLE IF NOT EXISTS public.withdrawals (
 
 -- 10. NOTIFICATIONS TABLE
 CREATE TABLE IF NOT EXISTS public.notifications (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id TEXT NOT NULL,
   title TEXT NOT NULL,
   message TEXT NOT NULL,
   type TEXT DEFAULT 'system',
@@ -366,3 +366,31 @@ CREATE POLICY "Sellers view own wallet" ON public.wallets FOR SELECT USING (auth
 CREATE POLICY "Sellers view own wallet transactions" ON public.wallet_transactions FOR SELECT USING (auth.uid() = seller_id);
 CREATE POLICY "Sellers view own withdrawal requests" ON public.withdrawal_requests FOR SELECT USING (auth.uid() = seller_id);
 CREATE POLICY "Sellers submit own withdrawal requests" ON public.withdrawal_requests FOR INSERT WITH CHECK (auth.uid() = seller_id);
+
+-- 19. NOTES PDF STORAGE BUCKET
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('notes', 'notes', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- Storage policies for PDF file access
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Public Access to Notes'
+  ) THEN
+    CREATE POLICY "Public Access to Notes" ON storage.objects FOR SELECT USING (bucket_id = 'notes');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Allow Uploads to Notes'
+  ) THEN
+    CREATE POLICY "Allow Uploads to Notes" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'notes');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Allow Deletes from Notes'
+  ) THEN
+    CREATE POLICY "Allow Deletes from Notes" ON storage.objects FOR DELETE USING (bucket_id = 'notes');
+  END IF;
+END $$;
+

@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { store } from '@/lib/store';
 import { loadSavedNotesFromDisk } from '@/lib/notes-storage';
+import { fetchAllNotesFromSupabase } from '@/lib/supabase-db';
 
 export async function GET(request: NextRequest) {
   try {
-    // 1. Sync from server disk if available
-    const diskNotes = loadSavedNotesFromDisk();
-    if (diskNotes && diskNotes.length > 0) {
-      store.syncNotes(diskNotes);
+    // 1. If Supabase SQL database is connected, fetch live records from PostgreSQL
+    const supabaseNotes = await fetchAllNotesFromSupabase();
+    if (supabaseNotes && supabaseNotes.length > 0) {
+      store.syncNotes(supabaseNotes);
+    } else {
+      // Fallback to local server disk storage
+      const diskNotes = loadSavedNotesFromDisk();
+      if (diskNotes && diskNotes.length > 0) {
+        store.syncNotes(diskNotes);
+      }
     }
 
     const { searchParams } = new URL(request.url);

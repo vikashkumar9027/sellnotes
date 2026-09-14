@@ -4,6 +4,7 @@ import { getRazorpayInstance, verifyRazorpaySignature, createRazorpayRouteTransf
 import { store, calculateOrderAmounts } from '@/lib/store';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
+import { recordPurchaseInSupabase } from '@/lib/supabase-db';
 
 export async function createRazorpayOrderAction({
   noteId,
@@ -150,6 +151,9 @@ export async function verifyPaymentAction({
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
     });
+
+    // Sync purchase to Supabase PostgreSQL table if configured
+    await recordPurchaseInSupabase(purchase);
 
     // 3. Razorpay Route marketplace transfer check
     const settings = store.getSettings();
