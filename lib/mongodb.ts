@@ -26,9 +26,20 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
   const isVercel = Boolean(process.env.VERCEL);
   const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/notemart';
 
-  // If on Vercel and URI still points to localhost, skip attempting to avoid 10s serverless timeout
+  // If on Vercel and URI still points to localhost or contains placeholder text, give clear error
+  if (
+    uri.includes('xxxxx') ||
+    uri.includes('<username>') ||
+    uri.includes('<password>') ||
+    uri.includes('YOUR_')
+  ) {
+    const errorMsg = 'MongoDB Atlas URI me placeholder "xxxxx" ya "<password>" laga hua hai. Kripya Vercel me apna real MongoDB Atlas connection string dalein.';
+    console.warn(errorMsg);
+    throw new Error(errorMsg);
+  }
+
   if (isVercel && (!process.env.MONGODB_URI || uri.includes('127.0.0.1') || uri.includes('localhost'))) {
-    const errorMsg = 'Skipping MongoDB connection on Vercel: Remote MONGODB_URI is not set in Vercel environment variables.';
+    const errorMsg = 'Vercel par remote MONGODB_URI environment variable set nahi hai. Kripya Vercel me MongoDB Atlas URI configure karein.';
     console.warn(errorMsg);
     throw new Error(errorMsg);
   }

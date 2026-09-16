@@ -146,7 +146,10 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (err: unknown) {
     console.error('Registration error:', err);
-    const message = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+    let message = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+    if (message.includes('ENOTFOUND') || message.includes('cluster0.xxxxx') || message.includes('placeholder')) {
+      message = 'MongoDB Atlas connection error: Vercel me MONGODB_URI galat ya placeholder ("xxxxx") hai. Kripya apna real MongoDB Atlas URL dalein.';
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
