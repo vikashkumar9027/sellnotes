@@ -32,16 +32,39 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
   }
 
   const isVercel = Boolean(process.env.VERCEL);
-  const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/notemart';
+  let rawUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/notemart';
 
-  // If on Vercel and URI still points to localhost or contains placeholder text, give clear error
+  // 1. Auto-sanitize: Remove accidental "MONGODB_URI=" prefix if pasted into Vercel Value box
+  let uri = rawUri.trim();
+  if (uri.startsWith('MONGODB_URI=')) {
+    uri = uri.replace(/^MONGODB_URI=/, '').trim();
+  }
+  // 2. Remove any accidental surrounding quotes
+  if ((uri.startsWith('"') && uri.endsWith('"')) || (uri.startsWith("'") && uri.endsWith("'"))) {
+    uri = uri.slice(1, -1).trim();
+  }
+
+  // 3. Auto-replace placeholders if user pasted with <db_username> or <db_password>
+  if (uri.includes('<db_username>') || uri.includes('<username>')) {
+    uri = uri.replace('<db_username>', 'admin').replace('<username>', 'admin');
+  }
+  if (uri.includes('<db_password>') || uri.includes('<password>')) {
+    uri = uri.replace('<db_password>', 'NoteMart2026').replace('<password>', 'NoteMart2026');
+  }
+
+  // 4. Ensure database name 'notemart' is present in connection path
+  if (uri.includes('.mongodb.net/?')) {
+    uri = uri.replace('.mongodb.net/?', '.mongodb.net/notemart?');
+  } else if (uri.endsWith('.mongodb.net') || uri.endsWith('.mongodb.net/')) {
+    uri = uri.replace(/\.mongodb\.net\/?$/, '.mongodb.net/notemart');
+  }
+
+  // If URI still contains dummy example text, give clear error
   if (
     uri.includes('xxxxx') ||
-    uri.includes('<username>') ||
-    uri.includes('<password>') ||
     uri.includes('YOUR_')
   ) {
-    const errorMsg = 'MongoDB Atlas URI me placeholder "xxxxx" ya "<password>" laga hua hai. Kripya Vercel me apna real MongoDB Atlas connection string dalein.';
+    const errorMsg = 'MongoDB Atlas URI me placeholder "xxxxx" laga hua hai. Kripya Vercel me apna real MongoDB Atlas connection string dalein.';
     console.warn(errorMsg);
     throw new Error(errorMsg);
   }
