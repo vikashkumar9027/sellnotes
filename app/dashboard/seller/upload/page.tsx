@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 export default function SellerUploadPage() {
   const categories = store.getCategories();
   const { user } = useAuth();
-  const sellerId = user?.id || 'user-seller-1';
+  const sellerId = user?.id || '';
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">

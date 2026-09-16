@@ -10,7 +10,7 @@ import { DollarSign, TrendingUp, Calendar, Wallet, ArrowDownToLine, History, Lan
 
 export default function EarningsPage() {
   const { user } = useAuth();
-  const sellerId = user?.id || 'user-seller-1';
+  const sellerId = user?.id || '';
 
   const wallet = store.getWallet(sellerId);
   const sales = store.getPurchasesBySeller(sellerId);

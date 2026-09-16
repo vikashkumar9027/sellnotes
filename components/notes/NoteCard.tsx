@@ -15,13 +15,17 @@ interface NoteCardProps {
 
 export default function NoteCard({ note, currentUserId: propUserId }: NoteCardProps) {
   const { user } = useAuth();
-  const currentUserId = propUserId || user?.id || 'user-student-1';
-  const [isWishlisted, setIsWishlisted] = useState(() => store.isInWishlist(currentUserId, note.id));
+  const currentUserId = propUserId || user?.id || '';
+  const [isWishlisted, setIsWishlisted] = useState(() => (currentUserId ? store.isInWishlist(currentUserId, note.id) : false));
 
   const handleWishlistToggle = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const newState = store.toggleWishlist(currentUserId, note.id);
+    if (!user) {
+      window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+    const newState = store.toggleWishlist(user.id, note.id);
     setIsWishlisted(newState);
   };
 

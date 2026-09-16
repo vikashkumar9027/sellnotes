@@ -112,12 +112,11 @@ export default function NoteDetailsPage() {
   };
 
   const isOwner = Boolean(
-    (user && (note.seller_id === user.id || note.seller?.email === user.email)) ||
-    (user?.id === 'user-seller-1' && (note.seller_id === 'user-seller-1' || !note.seller_id)) ||
+    (user && (note.seller_id === user.id || note.seller?.id === user.id || note.seller?.email === user.email)) ||
     store.isLocalUploadedNote(note.id, note.slug)
   );
   const isAdmin = Boolean(
-    user && (user.role === 'admin' || user.email === 'admin@notemart.com' || user.email === 'vikash@notemart.com' || user.id === 'user-admin-1')
+    user && (user.role === 'admin' || user.email === 'admin@notemart.com' || user.email === 'vikash@notemart.com')
   );
   const canDelete = isOwner || isAdmin;
   const [deletingNote, setDeletingNote] = useState(false);

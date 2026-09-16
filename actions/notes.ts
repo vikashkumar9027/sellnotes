@@ -10,6 +10,9 @@ import { storeOriginalPdf, isValidPdfBuffer, deletePhysicalPdf } from '@/lib/ser
 import { getCurrentUserAction } from '@/actions/auth';
 import { requireSuperAdmin } from '@/lib/super-admin-auth';
 import { upsertNoteInSupabase, deleteNoteFromSupabase } from '@/lib/supabase-db';
+import { getAuthUserFromCookies } from '@/lib/auth';
+import { connectToDatabase } from '@/lib/mongodb';
+import Note from '@/models/Note';
 
 export async function uploadNoteAction(formData: FormData, sellerId: string) {
   try {
@@ -72,6 +75,12 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
       }
     }
 
+    const authUser = await getAuthUserFromCookies();
+    if (!authUser) {
+      return { error: 'You must be logged in to upload and sell study notes.' };
+    }
+    const effectiveSellerId = authUser._id.toString();
+
     const newNote = store.createNote(
       {
         title,
@@ -96,8 +105,49 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
         uploaded_at: new Date().toISOString(),
         file_size,
       },
-      sellerId
+      effectiveSellerId
     );
+
+    if (authUser) {
+      newNote.seller_id = authUser._id.toString();
+      newNote.seller = {
+        id: authUser._id.toString(),
+        full_name: authUser.name,
+        email: authUser.email,
+        college: authUser.college || '',
+        avatar_url: authUser.profileImage || '',
+        role: 'seller',
+      } as unknown as import('@/types').Profile;
+    }
+
+    // Save to MongoDB if connected
+    try {
+      await connectToDatabase();
+      if (authUser) {
+        await Note.create({
+          seller: authUser._id,
+          title: newNote.title,
+          slug: newNote.slug,
+          description: newNote.description,
+          subject: newNote.subject,
+          university: newNote.university,
+          college: newNote.college || '',
+          course: newNote.course,
+          semester: newNote.semester,
+          price: newNote.price,
+          is_free: newNote.is_free,
+          pdf_path: newNote.pdf_path,
+          storage_key: newNote.storage_key,
+          original_filename: newNote.original_filename,
+          mime_type: newNote.mime_type,
+          file_size: newNote.file_size,
+          page_count: newNote.page_count,
+          status: 'approved',
+        });
+      }
+    } catch (mErr) {
+      console.warn('MongoDB note save error:', mErr);
+    }
 
     saveNotesToDisk(store.getNotes());
 
@@ -258,6 +308,22 @@ export async function deleteNoteAction(
     await deleteNoteFromSupabase(note.id);
     if (note.slug) {
       await deleteNoteFromSupabase(note.slug);
+    }
+
+    // 6. Delete from MongoDB database
+    try {
+      await connectToDatabase();
+      const deleteConditions: Array<{ _id?: string; slug?: string }> = [{ slug: cleanId }];
+      if (note.slug) deleteConditions.push({ slug: note.slug });
+      if (cleanId.length === 24 && /^[0-9a-fA-F]{24}$/.test(cleanId)) {
+        deleteConditions.push({ _id: cleanId });
+      }
+      if (note.id && note.id.length === 24 && /^[0-9a-fA-F]{24}$/.test(note.id)) {
+        deleteConditions.push({ _id: note.id });
+      }
+      await Note.deleteMany({ $or: deleteConditions });
+    } catch (mongoErr) {
+      console.warn('MongoDB note deletion error:', mongoErr);
     }
 
     // 6. Revalidate pages

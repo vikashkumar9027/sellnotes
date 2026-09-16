@@ -8,28 +8,33 @@ import { formatDate, formatPrice } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 
 export default function BuyerDashboardPage() {
-  const { user: authUser } = useAuth();
-  const currentUserId = authUser?.id || 'user-student-1';
-  const user = authUser || store.getUserById(currentUserId);
-  const purchases = store.getPurchasesByUser(currentUserId);
-  const wishlist = store.getWishlistByUser(currentUserId);
+  const { user } = useAuth();
+  const currentUserId = user?.id || '';
+  const purchases = currentUserId ? store.getPurchasesByUser(currentUserId) : [];
+  const wishlist = currentUserId ? store.getWishlistByUser(currentUserId) : [];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="flex items-center gap-4">
-          <img
-            src={user?.avatar_url || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200'}
-            alt={user?.full_name}
-            className="w-14 h-14 rounded-2xl object-cover border-2 border-indigo-500"
-          />
+          {user?.avatar_url ? (
+            <img
+              src={user.avatar_url}
+              alt={user.full_name}
+              className="w-14 h-14 rounded-2xl object-cover border-2 border-indigo-500"
+            />
+          ) : (
+            <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white font-black text-xl flex items-center justify-center shadow-lg shadow-indigo-600/30">
+              {user?.full_name ? user.full_name.slice(0, 2).toUpperCase() : 'U'}
+            </div>
+          )}
           <div>
             <h1 className="text-2xl font-black text-slate-900 dark:text-white">
-              Welcome back, {user?.full_name}!
+              Welcome back, {user?.full_name || 'Student'}!
             </h1>
             <p className="text-xs text-slate-500 font-medium">
-              {user?.college || 'College of Engineering Pune'} • {user?.course || 'B.Tech Mechanical'}
+              {user?.college || user?.university || 'Verified Student'} • {user?.course || 'Degree Program'}
             </p>
           </div>
         </div>

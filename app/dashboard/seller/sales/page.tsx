@@ -5,9 +5,12 @@ import { store } from '@/lib/store';
 import { formatDate, formatPrice } from '@/lib/utils';
 import { ShoppingBag, Info } from 'lucide-react';
 
+import { useAuth } from '@/context/AuthContext';
+
 export default function SalesPage() {
-  const sellerId = 'user-seller-1';
-  const sales = store.getPurchasesBySeller(sellerId);
+  const { user } = useAuth();
+  const sellerId = user?.id || '';
+  const sales = sellerId ? store.getPurchasesBySeller(sellerId) : [];
 
   const totalBaseSales = sales.reduce((sum, s) => sum + (s.base_amount ?? s.amount), 0);
   const totalPlatformFees = sales.reduce((sum, s) => sum + (s.platform_fee_amount ?? s.platform_fee), 0);

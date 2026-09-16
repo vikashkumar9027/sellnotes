@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   BookOpen,
-  Phone,
   Mail,
   User,
   GraduationCap,
@@ -16,61 +15,121 @@ import {
   ShieldCheck,
   DollarSign,
   Award,
+  Lock,
+  Eye,
+  EyeOff,
+  Building,
+  BookMarked,
+  RefreshCw,
 } from 'lucide-react';
-import { sendOtpAction, verifyOtpAction } from '@/actions/auth';
 import { useAuth } from '@/context/AuthContext';
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams?.get('redirect') || '';
   const { setUser } = useAuth();
+
+  // Registration form fields
   const [role, setRole] = useState<'student' | 'seller'>('student');
   const [fullName, setFullName] = useState('');
-  const [university, setUniversity] = useState('');
-  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [course, setCourse] = useState('');
+  const [college, setCollege] = useState('');
+  const [semester, setSemester] = useState('1st Semester');
+  const [phone, setPhone] = useState('');
 
+  // OTP step
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [otpValues, setOtpValues] = useState(['', '', '', '', '', '']);
+  const [timer, setTimer] = useState(60);
 
+  // Status feedback
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // 60-second cooldown timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (step === 'otp' && timer > 0) {
+      interval = setInterval(() => setTimer((t) => t - 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [step, timer]);
+
   const cleanEmail = email.trim().toLowerCase();
 
-  const handleStartRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // STEP 1: SEND REAL EMAIL OTP FOR REGISTRATION
+  const handleStartRegister = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setErrorMsg('');
+    setSuccessMsg('');
 
     if (!fullName.trim()) {
       setErrorMsg('Please enter your full name.');
       return;
     }
     if (!cleanEmail || !cleanEmail.includes('@')) {
-      setErrorMsg('Please enter a valid email address to receive your verification OTP.');
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+    if (!password || password.length < 6) {
+      setErrorMsg('Password must be at least 6 characters long.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMsg('Passwords do not match. Please re-check.');
+      return;
+    }
+    if (!course.trim()) {
+      setErrorMsg('Please enter your course / degree (e.g. B.Tech, B.A., Class 12).');
       return;
     }
 
     setLoading(true);
-    const res = await sendOtpAction(cleanEmail, {
-      fullName: fullName.trim(),
-      university: university.trim(),
-      role,
-      phone: phone.trim(),
-    });
-    setLoading(false);
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send-otp',
+          name: fullName.trim(),
+          email: cleanEmail,
+          password,
+          confirmPassword,
+          phone: phone.trim(),
+          college: college.trim(),
+          course: course.trim(),
+          semester,
+          role,
+        }),
+      });
 
-    if (res.error) {
-      setErrorMsg(res.error);
-    } else {
-      setSuccessMsg(res.message || `Verification code sent to ${cleanEmail}! Valid for 5 minutes.`);
-      setStep('otp');
+      const data = await res.json();
+      setLoading(false);
+
+      if (!res.ok || data.error) {
+        setErrorMsg(data.error || 'Failed to dispatch verification code.');
+      } else {
+        setSuccessMsg(data.message || `A 6-digit verification code has been sent to ${cleanEmail}.`);
+        setStep('otp');
+        setTimer(60);
+      }
+    } catch (err: unknown) {
+      setLoading(false);
+      setErrorMsg(err instanceof Error ? err.message : 'Registration error. Please try again.');
     }
   };
 
+  // STEP 2: VERIFY REAL OTP AND CREATE MONGODB ACCOUNT
   const handleVerifyRegisterOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setSuccessMsg('');
 
     const enteredOtp = otpValues.join('');
     if (enteredOtp.length < 6) {
@@ -79,32 +138,58 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
-    const res = await verifyOtpAction(cleanEmail, enteredOtp, {
-      fullName: fullName.trim(),
-      university: university.trim(),
-      role,
-    });
-    setLoading(false);
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          otp: enteredOtp,
+        }),
+      });
 
-    if (res.error) {
-      setErrorMsg(res.error);
-    } else {
-      if (res.user) {
-        setUser(res.user);
+      const data = await res.json();
+      setLoading(false);
+
+      if (!res.ok || data.error) {
+        setErrorMsg(data.error || 'OTP verification failed. Please try again.');
+      } else {
+        if (data.user) {
+          setUser({
+            id: data.user.id || data.user._id,
+            full_name: data.user.name,
+            email: data.user.email,
+            phone: data.user.phone || '',
+            college: data.user.college || '',
+            university: data.user.college || '',
+            course: data.user.course || '',
+            semester: data.user.semester || '',
+            role: data.user.role || 'student',
+            avatar_url: data.user.profileImage || '',
+            created_at: data.user.createdAt || new Date().toISOString(),
+            updated_at: data.user.updatedAt || new Date().toISOString(),
+          });
+        }
+        setSuccessMsg('🎉 Account created & email verified successfully! Welcome to NoteMart.');
+
+        // Target redirect destination
+        const targetUrl = redirect || (role === 'seller' ? '/dashboard/seller/upload' : '/dashboard');
+        setTimeout(() => {
+          router.push(targetUrl);
+        }, 1000);
       }
-      setSuccessMsg('🎉 Registration & Email Verification Complete! Welcome to NoteMart.');
-      setTimeout(() => {
-        router.push(role === 'seller' ? '/dashboard/seller' : '/dashboard');
-      }, 1000);
+    } catch (err: unknown) {
+      setLoading(false);
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to verify account.');
     }
   };
+
+  const loginHref = redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login';
 
   return (
     <div className="min-h-[90vh] bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4 sm:p-6 lg:p-8">
       <div className="max-w-5xl w-full bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12">
-        {/* ========================================================================= */}
-        {/* LEFT COLUMN: HERO SHOWCASE & SELLER / BUYER BENEFITS */}
-        {/* ========================================================================= */}
+        {/* LEFT COLUMN: HERO SHOWCASE */}
         <div className="lg:col-span-5 bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-950 text-white p-8 sm:p-10 flex flex-col justify-between relative overflow-hidden hidden sm:flex">
           <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
 
@@ -124,7 +209,7 @@ export default function RegisterPage() {
                 {role === 'seller' ? 'Earn 90% Selling Your Study Notes' : 'Ace Your Exams with Verified Notes'}
               </h2>
               <p className="text-slate-300 text-xs font-medium leading-relaxed">
-                Create your account in 30 seconds with real-time email OTP verification.
+                Create your verified student account in 30 seconds with real-time email OTP verification.
               </p>
             </div>
 
@@ -135,7 +220,7 @@ export default function RegisterPage() {
               </div>
               <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
                 <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0" />
-                <span>Anti-Screenshot Reader &amp; Copyright Rights</span>
+                <span>Anti-Screenshot DRM Reader Protection</span>
               </div>
               <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
                 <Award className="w-5 h-5 text-amber-400 shrink-0" />
@@ -150,14 +235,14 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        {/* ========================================================================= */}
-        {/* RIGHT COLUMN: REGISTRATION FORM CARD */}
-        {/* ========================================================================= */}
+        {/* RIGHT COLUMN: REGISTRATION FORM */}
         <div className="lg:col-span-7 p-6 sm:p-10 flex flex-col justify-center space-y-6">
           <div className="space-y-1">
             <h2 className="text-2xl font-black text-slate-900 dark:text-white">Create NoteMart Account</h2>
             <p className="text-xs text-slate-500 font-medium">
-              Select your role and enter your details to get started.
+              {redirect.includes('upload')
+                ? 'Register now to publish and sell your handwritten notes.'
+                : 'Select your role and enter your details to get started.'}
             </p>
           </div>
 
@@ -182,7 +267,7 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setRole('student')}
-                  className={`p-4 rounded-2xl border text-left transition-all ${
+                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
                     role === 'student'
                       ? 'border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/50 ring-2 ring-indigo-500'
                       : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
@@ -191,75 +276,151 @@ export default function RegisterPage() {
                   <div className="flex items-center gap-2 font-black text-xs text-slate-900 dark:text-white">
                     <GraduationCap className="w-4 h-4 text-indigo-600" /> Student Account
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-1">Buy &amp; study verified topper notes</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Buy &amp; study verified topper notes</p>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setRole('seller')}
-                  className={`p-4 rounded-2xl border text-left transition-all ${
+                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
                     role === 'seller'
                       ? 'border-amber-500 bg-amber-50/60 dark:bg-amber-950/50 ring-2 ring-amber-500'
                       : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center gap-2 font-black text-xs text-slate-900 dark:text-white">
-                    <DollarSign className="w-4 h-4 text-amber-500" /> Topper Seller Account
+                    <DollarSign className="w-4 h-4 text-amber-500" /> Seller Account
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-1">Upload notes &amp; earn 90% revenue</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Upload notes &amp; earn 90% revenue</p>
                 </button>
               </div>
 
-              {/* INPUT FIELDS */}
+              {/* FULL NAME */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Full Name *</label>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Aarav Sharma"
-                  required
-                  className="w-full py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Aarav Sharma"
+                    required
+                    className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <User className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+                </div>
               </div>
 
+              {/* EMAIL */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Email Address (For Real-Time OTP Verification) *</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="aarav@university.edu"
-                  required
-                  className="w-full py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                />
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Email Address (For Real Verification Code) *</label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="student@university.edu"
+                    required
+                    className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <Mail className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">University / College *</label>
-                <input
-                  type="text"
-                  value={university}
-                  onChange={(e) => setUniversity(e.target.value)}
-                  placeholder="e.g. IIT Bombay / DTU / Delhi University"
-                  required
-                  className="w-full py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                />
+              {/* PASSWORD & CONFIRM PASSWORD */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Password (Min 6 chars) *</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      minLength={6}
+                      className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500 pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Confirm Password *</label>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    minLength={6}
+                    className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Mobile Phone Number (Optional)</label>
-                <div className="flex rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
-                  <span className="px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold text-sm border-r border-slate-200 dark:border-slate-700 flex items-center">
-                    🇮🇳 +91
-                  </span>
+              {/* COURSE & SEMESTER */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Course / Degree *</label>
+                  <input
+                    type="text"
+                    value={course}
+                    onChange={(e) => setCourse(e.target.value)}
+                    placeholder="e.g. B.Tech / B.A. / MBBS / Class 12"
+                    required
+                    className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Semester / Year</label>
+                  <select
+                    value={semester}
+                    onChange={(e) => setSemester(e.target.value)}
+                    className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-hidden"
+                  >
+                    <option value="1st Semester">1st Semester</option>
+                    <option value="2nd Semester">2nd Semester</option>
+                    <option value="3rd Semester">3rd Semester</option>
+                    <option value="4th Semester">4th Semester</option>
+                    <option value="5th Semester">5th Semester</option>
+                    <option value="6th Semester">6th Semester</option>
+                    <option value="7th Semester">7th Semester</option>
+                    <option value="8th Semester">8th Semester</option>
+                    <option value="Annual / Complete">Annual / Complete</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* UNIVERSITY & PHONE */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">University / College</label>
+                  <input
+                    type="text"
+                    value={college}
+                    onChange={(e) => setCollege(e.target.value)}
+                    placeholder="e.g. IIT Bombay / DTU / Delhi University"
+                    className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Mobile Phone (Optional)</label>
                   <input
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     maxLength={10}
                     placeholder="98765 43210"
-                    className="w-full py-3 px-4 bg-white dark:bg-slate-900 text-sm font-black focus:outline-hidden"
+                    className="w-full py-2.5 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold focus:outline-hidden"
                   />
                 </div>
               </div>
@@ -267,9 +428,9 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black text-sm shadow-xl shadow-indigo-500/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.01]"
+                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black text-sm shadow-xl shadow-indigo-500/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.01] cursor-pointer disabled:opacity-70"
               >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Send 6-Digit Email OTP <ArrowRight className="w-4 h-4" /></>}
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Send 6-Digit Email Code <ArrowRight className="w-4 h-4" /></>}
               </button>
             </form>
           ) : (
@@ -309,26 +470,38 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
+                className="w-full py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
               >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Verify OTP &amp; Complete Registration</>}
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Verify Code &amp; Complete Registration</>}
               </button>
 
-              <div className="text-center text-xs">
+              <div className="flex items-center justify-between text-xs text-slate-500">
                 <button
                   type="button"
                   onClick={() => setStep('form')}
-                  className="text-indigo-600 font-bold hover:underline"
+                  className="hover:underline text-indigo-600 font-bold"
                 >
                   Edit Registration Details
                 </button>
+
+                {timer > 0 ? (
+                  <span>Resend code in <strong className="text-slate-900 dark:text-white font-mono">{timer}s</strong></span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleStartRegister()}
+                    className="text-indigo-600 font-bold hover:underline flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Resend Code
+                  </button>
+                )}
               </div>
             </form>
           )}
 
           <div className="text-center pt-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">
             Already have an account?{' '}
-            <Link href="/login" className="font-extrabold text-indigo-600 dark:text-indigo-400 hover:underline">
+            <Link href={loginHref} className="font-extrabold text-indigo-600 dark:text-indigo-400 hover:underline">
               Log in to NoteMart
             </Link>
           </div>
@@ -337,3 +510,18 @@ export default function RegisterPage() {
     </div>
   );
 }
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[90vh] flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        </div>
+      }
+    >
+      <RegisterForm />
+    </Suspense>
+  );
+}
+

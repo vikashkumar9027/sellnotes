@@ -12,9 +12,12 @@
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.48.1",
     "@types/nodemailer": "^8.0.1",
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "framer-motion": "^12.4.7",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.475.0",
+    "mongoose": "^9.10.1",
     "next": "^15.1.7",
     "nodemailer": "^10.0.0",
     "razorpay": "^2.9.5",
@@ -26,6 +29,8 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.17.19",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",

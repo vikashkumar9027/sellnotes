@@ -9,8 +9,8 @@ import { useAuth } from '@/context/AuthContext';
 
 export default function WishlistPage() {
   const { user } = useAuth();
-  const currentUserId = user?.id || 'user-student-1';
-  const wishlistItems = store.getWishlistByUser(currentUserId);
+  const currentUserId = user?.id || '';
+  const wishlistItems = currentUserId ? store.getWishlistByUser(currentUserId) : [];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">

@@ -43,7 +43,7 @@ export default function AdminNotesPage() {
 
     setDeletingId(note.id);
     try {
-      const res = await deleteNoteAction(note.id, user?.id || 'user-admin-1', 'admin');
+      const res = await deleteNoteAction(note.id, user?.id, user?.role || 'admin');
       if (res.error && !res.alreadyDeleted) {
         alert(res.error);
       } else {

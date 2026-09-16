@@ -24,7 +24,7 @@ import {
 
 export default function SellerDashboardPage() {
   const { user } = useAuth();
-  const sellerId = user?.id || 'user-seller-1';
+  const sellerId = user?.id || '';
 
   const wallet = store.getWallet(sellerId);
   const account = store.getSellerAccount(sellerId);

@@ -10,8 +10,8 @@ import { useAuth } from '@/context/AuthContext';
 
 export default function PurchasesPage() {
   const { user } = useAuth();
-  const currentUserId = user?.id || 'user-student-1';
-  const purchases = store.getPurchasesByUser(currentUserId);
+  const currentUserId = user?.id || '';
+  const purchases = currentUserId ? store.getPurchasesByUser(currentUserId) : [];
 
   const handleDownload = async (noteId: string, title: string) => {
     const res = await getSecureDownloadUrl(currentUserId, noteId);

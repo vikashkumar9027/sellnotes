@@ -20,7 +20,7 @@ import {
 
 export default function WithdrawalsPage() {
   const { user } = useAuth();
-  const sellerId = user?.id || 'user-seller-1';
+  const sellerId = user?.id || '';
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');

@@ -20,7 +20,7 @@ import {
 
 export default function SellerTransactionsPage() {
   const { user } = useAuth();
-  const sellerId = user?.id || 'user-seller-1';
+  const sellerId = user?.id || '';
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'sales' | 'withdrawals' | 'refunds' | 'adjustments'>('all');
 

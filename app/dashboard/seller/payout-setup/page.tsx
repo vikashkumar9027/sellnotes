@@ -20,7 +20,7 @@ import { SellerOnboardingStatus } from '@/types';
 
 export default function PayoutSetupPage() {
   const { user } = useAuth();
-  const sellerId = user?.id || 'user-seller-1';
+  const sellerId = user?.id || '';
 
   const existingAccount = store.getSellerAccount(sellerId);
 

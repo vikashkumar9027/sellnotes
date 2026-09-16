@@ -22,10 +22,10 @@ interface UploadFormProps {
   sellerId?: string;
 }
 
-export default function UploadForm({ categories, sellerId = 'user-seller-1' }: UploadFormProps) {
+export default function UploadForm({ categories, sellerId }: UploadFormProps) {
   const router = useRouter();
   const { user } = useAuth();
-  const activeSellerId = user?.id || sellerId || 'user-seller-1';
+  const activeSellerId = user?.id || sellerId || '';
   const [loading, setLoading] = useState(false);
   const [isFree, setIsFree] = useState(false);
   const [price, setPrice] = useState(49);
@@ -143,6 +143,12 @@ export default function UploadForm({ categories, sellerId = 'user-seller-1' }: U
     setErrorMsg('');
     setSuccessMsg('');
     setNewNoteSlug('');
+
+    if (!user) {
+      setErrorMsg('Please log in or register before uploading notes.');
+      router.push('/login?redirect=/dashboard/seller/upload');
+      return;
+    }
 
     if (!selectedFile) {
       setErrorMsg('Please select a PDF file of your handwritten notes.');

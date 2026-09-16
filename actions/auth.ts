@@ -184,11 +184,25 @@ export async function verifyOtpAction(
 
 export async function getCurrentUserAction(): Promise<Profile | null> {
   try {
-    const cookieStore = await cookies();
-    const userId = cookieStore.get('notemart_user_id')?.value;
-    if (!userId) return null;
-    const user = store.getUserById(userId);
-    return user || null;
+    const { getAuthUserFromCookies } = await import('@/lib/auth');
+    const mongoUser = await getAuthUserFromCookies();
+    if (mongoUser) {
+      return {
+        id: mongoUser._id.toString(),
+        full_name: mongoUser.name,
+        email: mongoUser.email,
+        phone: mongoUser.phone || '',
+        college: mongoUser.college || '',
+        university: mongoUser.college || '',
+        course: mongoUser.course || '',
+        semester: mongoUser.semester || '',
+        role: mongoUser.role || 'student',
+        avatar_url: mongoUser.profileImage || '',
+        created_at: mongoUser.createdAt ? mongoUser.createdAt.toISOString() : new Date().toISOString(),
+        updated_at: mongoUser.updatedAt ? mongoUser.updatedAt.toISOString() : new Date().toISOString(),
+      } as Profile;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -197,6 +211,8 @@ export async function getCurrentUserAction(): Promise<Profile | null> {
 export async function logoutAction() {
   try {
     const cookieStore = await cookies();
+    const { AUTH_COOKIE_NAME } = await import('@/lib/auth');
+    cookieStore.delete(AUTH_COOKIE_NAME);
     cookieStore.delete('notemart_user_id');
     revalidatePath('/');
     return { success: true };
@@ -227,70 +243,150 @@ export async function switchSessionUserAction(userId: string) {
 export async function loginAction(formData: FormData) {
   try {
     const identifier = formData.get('identifier') as string;
+    const password = formData.get('password') as string;
 
     if (!identifier) {
-      return { error: 'Please enter your email or phone number.' };
+      return { error: 'Please enter your email address.' };
     }
 
-    const user = store.getUsers().find((u) => u.email.toLowerCase() === identifier.toLowerCase());
-    if (!user) {
-      return { error: 'User not found. Please register or verify with OTP.' };
+    const cleanEmail = identifier.trim().toLowerCase();
+
+    // Check MongoDB User
+    const { connectToDatabase } = await import('@/lib/mongodb');
+    const User = (await import('@/models/User')).default;
+    await connectToDatabase();
+
+    const mongoUser = await User.findOne({ email: cleanEmail }).select('+password');
+    if (mongoUser && password && mongoUser.password) {
+      const isMatch = await mongoUser.comparePassword(password);
+      if (!isMatch) {
+        return { error: 'Invalid password. Please try again.' };
+      }
+
+      const { signToken, AUTH_COOKIE_NAME } = await import('@/lib/auth');
+      const token = signToken({
+        userId: mongoUser._id.toString(),
+        email: mongoUser.email,
+        role: mongoUser.role,
+      });
+
+      const cookieStore = await cookies();
+      cookieStore.set(AUTH_COOKIE_NAME, token, {
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60,
+      });
+
+      return {
+        success: true,
+        user: {
+          id: mongoUser._id.toString(),
+          full_name: mongoUser.name,
+          email: mongoUser.email,
+          college: mongoUser.college,
+          course: mongoUser.course,
+          semester: mongoUser.semester,
+          role: mongoUser.role,
+        },
+      };
     }
 
-    const cookieStore = await cookies();
-    cookieStore.set('notemart_user_id', user.id, {
-      path: '/',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60,
-    });
-
-    return { success: true, user };
-  } catch {
-    return { error: 'Invalid login credentials' };
+    return { error: 'Invalid email or password. Please check your credentials.' };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Invalid login credentials';
+    return { error: msg };
   }
 }
 
 export async function registerAction(formData: FormData) {
   try {
     const full_name = formData.get('full_name') as string;
-    const identifier = formData.get('identifier') as string;
-    const university = (formData.get('university') as string) || '';
-    const role = (formData.get('role') as Profile['role']) || 'student';
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
+    const course = (formData.get('course') as string) || '';
+    const college = (formData.get('college') as string) || '';
+    const semester = (formData.get('semester') as string) || '1st Semester';
 
-    if (!full_name || !identifier) {
+    if (!full_name || !email || !password) {
       return { error: 'Please fill in all required fields.' };
     }
 
-    const user = store.createUser({
-      email: identifier,
-      full_name,
-      university,
-      role,
+    const { connectToDatabase } = await import('@/lib/mongodb');
+    const User = (await import('@/models/User')).default;
+    await connectToDatabase();
+
+    const cleanEmail = email.trim().toLowerCase();
+    const existing = await User.findOne({ email: cleanEmail });
+    if (existing) {
+      return { error: 'An account with this email already exists. Please log in.' };
+    }
+
+    const newUser = await User.create({
+      name: full_name.trim(),
+      email: cleanEmail,
+      password,
+      college: college.trim(),
+      course: course.trim(),
+      semester: semester.trim(),
+      role: 'student',
+    });
+
+    const { signToken, AUTH_COOKIE_NAME } = await import('@/lib/auth');
+    const token = signToken({
+      userId: newUser._id.toString(),
+      email: newUser.email,
+      role: newUser.role,
     });
 
     const cookieStore = await cookies();
-    cookieStore.set('notemart_user_id', user.id, {
+    cookieStore.set(AUTH_COOKIE_NAME, token, {
       path: '/',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge: 7 * 24 * 60 * 60,
     });
 
-    return { success: true, user };
-  } catch {
-    return { error: 'Registration failed' };
+    return {
+      success: true,
+      user: {
+        id: newUser._id.toString(),
+        full_name: newUser.name,
+        email: newUser.email,
+        college: newUser.college,
+        course: newUser.course,
+        semester: newUser.semester,
+        role: newUser.role,
+      },
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Registration failed';
+    return { error: msg };
   }
 }
 
 export async function updateProfileAction(userId: string, updates: Partial<Profile>) {
   try {
-    const updatedUser = store.updateUserProfile(userId, updates);
+    const { connectToDatabase } = await import('@/lib/mongodb');
+    const User = (await import('@/models/User')).default;
+    await connectToDatabase();
+
+    const mongoFields: Record<string, unknown> = {};
+    if (updates.full_name) mongoFields.name = updates.full_name.trim();
+    if (updates.college !== undefined) mongoFields.college = updates.college.trim();
+    if (updates.course !== undefined) mongoFields.course = updates.course.trim();
+    if (updates.semester !== undefined) mongoFields.semester = updates.semester.trim();
+
+    if (userId && userId.length === 24) {
+      await User.findByIdAndUpdate(userId, mongoFields);
+    }
+
     revalidatePath('/dashboard/profile');
-    return { success: true, user: updatedUser };
-  } catch {
-    return { error: 'Failed to update profile' };
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed to update profile';
+    return { error: msg };
   }
 }
