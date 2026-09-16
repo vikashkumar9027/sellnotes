@@ -175,6 +175,24 @@ const NoteSchema = new Schema<INote>(
   }
 );
 
+// Indexes for real-time multi-field search and high-performance filtering
+NoteSchema.index({
+  title: 'text',
+  subject: 'text',
+  description: 'text',
+  university: 'text',
+  course: 'text',
+  tags: 'text',
+});
+
+NoteSchema.index({ status: 1, createdAt: -1 });
+NoteSchema.index({ status: 1, price: 1 });
+NoteSchema.index({ status: 1, downloads: -1 });
+NoteSchema.index({ subject: 1, status: 1 });
+NoteSchema.index({ university: 1, status: 1 });
+NoteSchema.index({ course: 1, status: 1 });
+NoteSchema.index({ seller: 1, status: 1 });
+
 const Note: Model<INote> = mongoose.models.Note || mongoose.model<INote>('Note', NoteSchema);
 
 export default Note;

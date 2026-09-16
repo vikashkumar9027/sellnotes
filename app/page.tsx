@@ -44,9 +44,9 @@ export default function HomePage() {
 
   const handleSearch = (query: string) => {
     if (query.trim()) {
-      router.push(`/notes?q=${encodeURIComponent(query)}`);
+      router.push(`/search?q=${encodeURIComponent(query)}`);
     } else {
-      router.push('/notes');
+      router.push('/search');
     }
   };
 
@@ -91,7 +91,7 @@ export default function HomePage() {
               <SearchBar onSearch={handleSearch} />
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500">
                 <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Popular:</span>
-                {['UPSC Polity', 'GATE CSE', 'SSC CGL Maths', 'Data Structures', 'IIT Bombay', 'NEET Biology'].map((term) => (
+                {['Python', 'DBMS', 'Operating System', 'UPSC Polity', 'GATE CSE', 'Data Structures', 'Machine Learning', 'AKTU'].map((term) => (
                   <button
                     key={term}
                     onClick={() => handleSearch(term)}
