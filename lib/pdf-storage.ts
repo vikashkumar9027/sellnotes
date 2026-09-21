@@ -103,24 +103,34 @@ export async function detectClientPdfPageCount(file: File): Promise<number> {
       }
     }
 
-    // 2. Binary text scanning for /Count or /Type /Page
-    const text = new TextDecoder('latin1').decode(new Uint8Array(arrayBuffer));
-
-    const pagesMatch = text.match(/\/Type\s*\/Pages\b[\s\S]*?\/Count\s+(\d+)/);
-    if (pagesMatch && pagesMatch[1]) {
-      const count = parseInt(pagesMatch[1], 10);
-      if (count > 0 && count <= 10000) return count;
+    // 2. Fast sampling of header and trailer bytes (linear O(1) memory, no freezing)
+    const bytes = new Uint8Array(arrayBuffer);
+    let sampleBytes: Uint8Array;
+    if (bytes.length > 1024 * 1024) {
+      const head = bytes.subarray(0, 512 * 1024);
+      const tail = bytes.subarray(bytes.length - 512 * 1024);
+      sampleBytes = new Uint8Array(head.length + tail.length);
+      sampleBytes.set(head);
+      sampleBytes.set(tail, head.length);
+    } else {
+      sampleBytes = bytes;
     }
+    const text = new TextDecoder('latin1').decode(sampleBytes);
 
-    const countMatch = text.match(/\/Count\s+(\d+)[\s\S]*?\/Type\s*\/Pages\b/);
-    if (countMatch && countMatch[1]) {
-      const count = parseInt(countMatch[1], 10);
-      if (count > 0 && count <= 10000) return count;
+    // Direct /Count search without catastrophic backtracking
+    const countMatches = text.matchAll(/\/Count\s+(\d+)/g);
+    let maxCount = 0;
+    for (const match of countMatches) {
+      const val = parseInt(match[1], 10);
+      if (val > maxCount && val <= 10000) {
+        maxCount = val;
+      }
     }
+    if (maxCount > 0) return maxCount;
 
     const pageMatches = text.match(/\/Type\s*\/Page\b(?!\s*s)/g);
     if (pageMatches && pageMatches.length > 0) {
-      return pageMatches.length;
+      return Math.min(pageMatches.length, 10000);
     }
   } catch (err) {
     console.warn('Could not detect page count client-side:', err);

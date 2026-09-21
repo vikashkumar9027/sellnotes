@@ -28,30 +28,32 @@ export function detectPdfPageCountFromBuffer(buffer: Buffer): number {
   try {
     if (!isValidPdfBuffer(buffer)) return 1;
 
-    const content = buffer.toString('binary');
-
-    // 1. Try to extract /Count N from the root /Pages object
-    // Match /Type\s*/Pages.*?/Count\s+(\d+) or /Count\s+(\d+).*?/Type\s*/Pages
-    const pagesMatches = content.match(/\/Type\s*\/Pages\b[\s\S]*?\/Count\s+(\d+)/);
-    if (pagesMatches && pagesMatches[1]) {
-      const count = parseInt(pagesMatches[1], 10);
-      if (count > 0 && count <= 10000) {
-        return count;
-      }
+    // Fast sampling of head and trailer bytes (linear O(1) memory, no freezing)
+    let sampleBuffer: Buffer;
+    if (buffer.length > 1024 * 1024) {
+      const head = buffer.subarray(0, 512 * 1024);
+      const tail = buffer.subarray(buffer.length - 512 * 1024);
+      sampleBuffer = Buffer.concat([head, tail]);
+    } else {
+      sampleBuffer = buffer;
     }
 
-    const countMatches = content.match(/\/Count\s+(\d+)[\s\S]*?\/Type\s*\/Pages\b/);
-    if (countMatches && countMatches[1]) {
-      const count = parseInt(countMatches[1], 10);
-      if (count > 0 && count <= 10000) {
-        return count;
+    const text = sampleBuffer.toString('latin1');
+
+    // Direct /Count search without catastrophic backtracking
+    const countMatches = text.matchAll(/\/Count\s+(\d+)/g);
+    let maxCount = 0;
+    for (const match of countMatches) {
+      const val = parseInt(match[1], 10);
+      if (val > maxCount && val <= 10000) {
+        maxCount = val;
       }
     }
+    if (maxCount > 0) return maxCount;
 
-    // 2. Fallback: Count occurrences of "/Type /Page" (excluding "/Type /Pages")
-    const pageObjMatches = content.match(/\/Type\s*\/Page\b(?!\s*s)/g);
-    if (pageObjMatches && pageObjMatches.length > 0) {
-      return pageObjMatches.length;
+    const pageMatches = text.match(/\/Type\s*\/Page\b(?!\s*s)/g);
+    if (pageMatches && pageMatches.length > 0) {
+      return Math.min(pageMatches.length, 10000);
     }
   } catch (err) {
     console.warn('Could not detect page count from PDF buffer:', err);
@@ -114,12 +116,18 @@ export async function storeOriginalPdf(
 
     if (isRealSupabase) {
       const supabase = createAdminClient();
-      const { data, error } = await supabase.storage
+      const uploadPromise = supabase.storage
         .from('notes')
         .upload(`pdfs/${safeName}`, buffer, {
           contentType: 'application/pdf',
           upsert: true,
         });
+
+      const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) =>
+        setTimeout(() => resolve({ data: null, error: new Error('Supabase storage timeout') }), 2500)
+      );
+
+      const { data, error } = await Promise.race([uploadPromise, timeoutPromise]);
 
       if (!error && data?.path) {
         const { data: publicData } = supabase.storage.from('notes').getPublicUrl(data.path);
@@ -129,7 +137,7 @@ export async function storeOriginalPdf(
       }
     }
   } catch (err) {
-    console.warn('Supabase storage upload skipped or failed:', err);
+    console.warn('Supabase storage upload skipped or timed out:', err);
   }
 
   return {

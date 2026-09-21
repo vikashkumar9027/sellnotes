@@ -151,8 +151,15 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
 
     saveNotesToDisk(store.getNotes());
 
-    // Sync to Supabase PostgreSQL table if configured
-    await upsertNoteInSupabase(newNote);
+    // Sync to Supabase PostgreSQL table if configured (non-blocking with 2s timeout)
+    try {
+      await Promise.race([
+        upsertNoteInSupabase(newNote),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+    } catch (supaErr) {
+      console.warn('Supabase note sync skipped or timed out:', supaErr);
+    }
 
     revalidatePath('/notes');
     revalidatePath('/categories');

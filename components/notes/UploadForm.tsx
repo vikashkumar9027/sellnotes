@@ -32,6 +32,7 @@ export default function UploadForm({ categories, sellerId }: UploadFormProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [detectedPageCount, setDetectedPageCount] = useState<number>(0);
   const [detectingPages, setDetectingPages] = useState<boolean>(false);
+  const [uploadStatus, setUploadStatus] = useState<string>('');
 
   // Education Level & Course System
   const [selectedLevel, setSelectedLevel] = useState<string>('ug');
@@ -173,60 +174,118 @@ export default function UploadForm({ categories, sellerId }: UploadFormProps) {
     }
 
     setLoading(true);
-    const formData = new FormData(e.currentTarget);
-    formData.append('pdf_file', selectedFile);
-    formData.append('is_free', String(isFree));
-    formData.append('price', String(isFree ? 0 : price));
-    formData.append('course', finalCourse);
-    formData.append('subject', finalSubject);
-    formData.append('semester', selectedSemester);
-    formData.set('page_count', String(detectedPageCount || 1));
+    setUploadStatus('Uploading & verifying PDF note...');
 
-    if (selectedCategory === 'custom') {
-      formData.append('custom_category_name', customCategory.trim());
-      formData.append('category_id', '');
-    } else {
-      formData.append('category_id', selectedCategory);
-      formData.append('custom_category_name', '');
-    }
+    try {
+      const formData = new FormData(e.currentTarget);
+      formData.append('pdf_file', selectedFile);
+      formData.append('is_free', String(isFree));
+      formData.append('price', String(isFree ? 0 : price));
+      formData.append('course', finalCourse);
+      formData.append('subject', finalSubject);
+      formData.append('semester', selectedSemester);
+      formData.set('page_count', String(detectedPageCount || 1));
 
-    const res = await uploadNoteAction(formData, activeSellerId);
-    setLoading(false);
+      if (selectedCategory === 'custom') {
+        formData.append('custom_category_name', customCategory.trim());
+        formData.append('category_id', '');
+      } else {
+        formData.append('category_id', selectedCategory);
+        formData.append('custom_category_name', '');
+      }
 
-    if (res.error) {
-      setErrorMsg(res.error);
-    } else {
-      if (res.note) {
-        // Save full original PDF file byte-for-byte into IndexedDB for instant reading & downloading
-        if (selectedFile) {
-          try {
-            await savePdfToIndexedDB(
-              [
-                res.note.slug,
-                res.note.id,
-                res.note.pdf_path,
-                res.note.storage_key || '',
-                res.note.title,
-              ].filter(Boolean) as string[],
-              selectedFile
-            );
-          } catch (storageErr) {
-            console.warn('Could not save PDF to IndexedDB:', storageErr);
+      let resNote: any = null;
+      let errorOccurred: string | null = null;
+
+      // 1. Primary path: Use dedicated multipart upload API route with 45s AbortController
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+        setUploadStatus('Saving note to secure server vault...');
+        const apiResponse = await fetch('/api/notes/upload', {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (apiResponse.ok) {
+          const apiData = await apiResponse.json();
+          if (apiData.success && apiData.note) {
+            resNote = apiData.note;
+          } else {
+            errorOccurred = apiData.error || 'Failed to upload note.';
           }
+        } else {
+          if (apiResponse.status === 401) {
+            setErrorMsg('Session expired or login required. Please log in to upload notes.');
+            return;
+          }
+          const errData = await apiResponse.json().catch(() => null);
+          errorOccurred = errData?.error || `Upload failed with status code ${apiResponse.status}`;
         }
+      } catch (fetchErr: any) {
+        if (fetchErr?.name === 'AbortError') {
+          errorOccurred = 'Upload timed out. Please check your internet connection and retry.';
+        } else {
+          console.warn('API upload route fetch failed, attempting server action fallback:', fetchErr);
+        }
+      }
+
+      // 2. Fallback: If API route was unreachable or hit network issue, try Server Action
+      if (!resNote && !errorOccurred) {
+        setUploadStatus('Processing via backup channel...');
+        const res = await uploadNoteAction(formData, activeSellerId);
+        if (res.error) {
+          errorOccurred = res.error;
+        } else if (res.note) {
+          resNote = res.note;
+        }
+      }
+
+      if (errorOccurred) {
+        setErrorMsg(errorOccurred);
+        return;
+      }
+
+      if (resNote) {
+        setUploadStatus('Publishing note live...');
+        // Save PDF into client IndexedDB in the background without blocking UI
+        if (selectedFile) {
+          savePdfToIndexedDB(
+            [
+              resNote.slug,
+              resNote.id,
+              resNote.pdf_path,
+              resNote.storage_key || '',
+              resNote.title,
+            ].filter(Boolean) as string[],
+            selectedFile
+          ).catch((e) => console.warn('IndexedDB save notice:', e));
+        }
+
         // 1. Immediately register in client store and persist to localStorage
-        store.saveNoteLocally(res.note);
+        store.saveNoteLocally(resNote);
         // 2. Dispatch event to notify all listening components
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new Event('notemart_notes_updated'));
         }
+
+        const slug = resNote.slug || '';
+        setNewNoteSlug(slug);
+        setSuccessMsg('🎉 Note published live! Your note is now visible on the main marketplace and in your seller dashboard.');
+        setTimeout(() => {
+          router.push(slug ? `/notes/${slug}` : '/dashboard/seller/notes');
+        }, 1000);
       }
-      const slug = res.note?.slug || '';
-      setNewNoteSlug(slug);
-      setSuccessMsg('🎉 Note published live! Your note is now visible on the main marketplace and in your seller dashboard.');
-      setTimeout(() => {
-        router.push(slug ? `/notes/${slug}` : '/dashboard/seller/notes');
-      }, 1200);
+    } catch (unexpectedErr: any) {
+      console.error('Unexpected note upload exception:', unexpectedErr);
+      setErrorMsg(unexpectedErr?.message || 'Something went wrong during upload. Please try again.');
+    } finally {
+      setLoading(false);
+      setUploadStatus('');
     }
   };
 
@@ -665,9 +724,16 @@ export default function UploadForm({ categories, sellerId }: UploadFormProps) {
       <button
         type="submit"
         disabled={loading}
-        className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black text-base shadow-xl shadow-indigo-500/25 transition-all flex items-center justify-center gap-2"
+        className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 disabled:opacity-70 disabled:cursor-not-allowed text-white font-black text-base shadow-xl shadow-indigo-500/25 transition-all flex items-center justify-center gap-2"
       >
-        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Publish Note Live Now'}
+        {loading ? (
+          <>
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>{uploadStatus || 'Publishing Note Live Now...'}</span>
+          </>
+        ) : (
+          'Publish Note Live Now'
+        )}
       </button>
     </form>
   );
