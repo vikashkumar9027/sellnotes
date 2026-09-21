@@ -290,24 +290,24 @@ export default function UploadForm({ categories, sellerId }: UploadFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-10 shadow-xl space-y-8">
+    <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-8 lg:p-10 shadow-xl space-y-6 sm:space-y-8">
       {errorMsg && (
-        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 text-rose-700 dark:text-rose-300 text-sm font-semibold flex items-center gap-2">
-          <AlertCircle className="w-5 h-5 shrink-0" />
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 text-rose-700 dark:text-rose-300 text-xs sm:text-sm font-semibold flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {successMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 text-emerald-800 dark:text-emerald-200 text-sm font-bold flex flex-col gap-2">
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 text-emerald-800 dark:text-emerald-200 text-xs sm:text-sm font-bold flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 shrink-0" />
             <span>{successMsg}</span>
           </div>
           {newNoteSlug && (
             <a
               href={`/notes/${newNoteSlug}`}
-              className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-700 dark:text-emerald-300 underline hover:text-emerald-900 ml-7"
+              className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-700 dark:text-emerald-300 underline hover:text-emerald-900 ml-6"
             >
               <span>View Your Live Note Page</span> <ExternalLink className="w-3.5 h-3.5" />
             </a>
@@ -317,14 +317,14 @@ export default function UploadForm({ categories, sellerId }: UploadFormProps) {
 
       {/* SECTION 1: PDF FILE UPLOAD */}
       <div className="space-y-3">
-        <h3 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-          <FileText className="w-5 h-5 text-indigo-600" /> 1. Upload Handwritten PDF File *
+        <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+          <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 shrink-0" /> 1. Upload Handwritten PDF File *
         </h3>
         <p className="text-xs text-slate-500">
           Upload clear, legible handwritten PDF notes. Maximum allowed file size: 5 GB (5120 MB). Up to 5,000 pages supported in original format.
         </p>
 
-        <div className="relative border-2 border-dashed border-indigo-200 dark:border-slate-700 hover:border-indigo-500 rounded-2xl p-8 text-center bg-slate-50/50 dark:bg-slate-800/50 transition-colors">
+        <div className="relative border-2 border-dashed border-indigo-200 dark:border-slate-700 hover:border-indigo-500 rounded-2xl p-4 sm:p-8 text-center bg-slate-50/50 dark:bg-slate-800/50 transition-colors">
           <input
             type="file"
             accept=".pdf"
@@ -686,18 +686,18 @@ export default function UploadForm({ categories, sellerId }: UploadFormProps) {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-200 dark:border-slate-700">
-              <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Set Price</span>
-                <span className="text-sm font-extrabold text-slate-900 dark:text-white">₹{price}</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center pt-2 border-t border-slate-200 dark:border-slate-700">
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex sm:flex-col items-center justify-between sm:justify-center">
+                <span className="text-[11px] sm:text-[10px] text-slate-500 sm:text-slate-400 font-semibold uppercase">Set Price</span>
+                <span className="text-base sm:text-sm font-extrabold text-slate-900 dark:text-white">₹{price}</span>
               </div>
-              <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Platform Fee ({settings.platform_commission}%)</span>
-                <span className="text-sm font-bold text-amber-600">₹{platformFee}</span>
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex sm:flex-col items-center justify-between sm:justify-center">
+                <span className="text-[11px] sm:text-[10px] text-slate-500 sm:text-slate-400 font-semibold uppercase">Platform Fee ({settings.platform_commission}%)</span>
+                <span className="text-base sm:text-sm font-bold text-amber-600">₹{platformFee}</span>
               </div>
-              <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800">
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block uppercase">Your Net Earning</span>
-                <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">₹{sellerEarning}</span>
+              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 flex sm:flex-col items-center justify-between sm:justify-center">
+                <span className="text-[11px] sm:text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold uppercase">Your Net Earning</span>
+                <span className="text-base sm:text-sm font-black text-emerald-600 dark:text-emerald-400">₹{sellerEarning}</span>
               </div>
             </div>
           </div>

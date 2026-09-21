@@ -179,14 +179,14 @@ export default function NoteDetailsPage() {
 
         {/* RIGHT COLUMN: METADATA & PURCHASE ACTION (5 COLS) */}
         <div className="lg:col-span-5 space-y-6">
-          <div id="purchase-card" className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 shadow-xl">
+          <div id="purchase-card" className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800 p-4 sm:p-8 space-y-5 sm:space-y-6 shadow-xl">
             {/* BADGES & RATING */}
-            <div className="flex items-center justify-between">
-              <span className={`px-3 py-1 rounded-full text-xs font-black tracking-wide ${note.is_free ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'}`}>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-black tracking-wide ${note.is_free ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'}`}>
                 {note.is_free ? 'FREE NOTE' : 'PAID HANDWRITTEN NOTE'}
               </span>
 
-              <div className="flex items-center gap-1.5 text-amber-500 text-sm font-black">
+              <div className="flex items-center gap-1.5 text-amber-500 text-xs sm:text-sm font-black">
                 <Star className="w-4 h-4 fill-amber-400 stroke-amber-400" />
                 <span>{note.average_rating > 0 ? note.average_rating : 'New'}</span>
                 <span className="text-slate-400 font-normal text-xs">({reviews.length} reviews)</span>
@@ -194,38 +194,38 @@ export default function NoteDetailsPage() {
             </div>
 
             {/* TITLE */}
-            <h1 className="text-2xl font-black text-slate-900 dark:text-white leading-tight">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-tight">
               {note.title}
             </h1>
 
             {/* SUBJECT & UNIVERSITY */}
-            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700 space-y-1.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-semibold">Subject:</span>
-                <span className="font-extrabold text-indigo-600 dark:text-indigo-400">{note.subject}</span>
+            <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700 space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500 font-semibold shrink-0">Subject:</span>
+                <span className="font-extrabold text-indigo-600 dark:text-indigo-400 text-right truncate">{note.subject}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-semibold">University:</span>
-                <span className="font-bold text-slate-900 dark:text-white">{note.university}</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500 font-semibold shrink-0">University:</span>
+                <span className="font-bold text-slate-900 dark:text-white text-right truncate">{note.university}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-semibold">Course &amp; Sem:</span>
-                <span className="font-medium text-slate-700 dark:text-slate-300">{note.course} ({note.semester})</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500 font-semibold shrink-0">Course &amp; Sem:</span>
+                <span className="font-medium text-slate-700 dark:text-slate-300 text-right truncate">{note.course} ({note.semester})</span>
               </div>
             </div>
 
             {/* PRICE CONTAINER */}
-            <div className="flex items-baseline justify-between pt-2">
+            <div className="flex items-baseline justify-between pt-1">
               <div>
                 <span className="text-xs text-slate-400 font-semibold block uppercase">Access Price</span>
-                <span className="text-3xl font-black text-slate-900 dark:text-white">
+                <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
                   {formatPrice(note.price, note.is_free)}
                 </span>
               </div>
 
               <div className="text-right">
                 <span className="text-xs text-slate-400 font-semibold block uppercase">Page Count</span>
-                <span className="text-lg font-bold text-slate-700 dark:text-slate-300">{note.page_count} Pages</span>
+                <span className="text-base sm:text-lg font-bold text-slate-700 dark:text-slate-300">{note.page_count} Pages</span>
               </div>
             </div>
 
@@ -233,13 +233,13 @@ export default function NoteDetailsPage() {
             <PurchaseButton note={note} buyerId={currentUserId} />
 
             {/* AUXILIARY ACTIONS */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
               <button
                 onClick={handleWishlistToggle}
-                className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-rose-500 font-semibold"
+                className="flex items-center gap-1 text-slate-600 dark:text-slate-400 hover:text-rose-500 font-semibold py-1 px-1.5"
               >
-                <Heart className={`w-4 h-4 ${isWishlisted ? 'fill-rose-500 text-rose-500' : ''}`} />
-                <span>{isWishlisted ? 'Wishlisted' : 'Save to Wishlist'}</span>
+                <Heart className={`w-3.5 h-3.5 ${isWishlisted ? 'fill-rose-500 text-rose-500' : ''}`} />
+                <span>{isWishlisted ? 'Saved' : 'Wishlist'}</span>
               </button>
 
               <button
@@ -247,16 +247,16 @@ export default function NoteDetailsPage() {
                   navigator.clipboard.writeText(window.location.href);
                   alert('Link copied to clipboard!');
                 }}
-                className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-indigo-600 font-semibold"
+                className="flex items-center gap-1 text-slate-600 dark:text-slate-400 hover:text-indigo-600 font-semibold py-1 px-1.5"
               >
-                <Share2 className="w-4 h-4" /> Share Link
+                <Share2 className="w-3.5 h-3.5" /> <span>Share</span>
               </button>
 
               <button
                 onClick={() => setReportOpen(true)}
-                className="flex items-center gap-1.5 text-slate-400 hover:text-rose-500 font-semibold"
+                className="flex items-center gap-1 text-slate-400 hover:text-rose-500 font-semibold py-1 px-1.5"
               >
-                <Flag className="w-4 h-4" /> Report
+                <Flag className="w-3.5 h-3.5" /> <span>Report</span>
               </button>
             </div>
 

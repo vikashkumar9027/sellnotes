@@ -443,7 +443,7 @@ function SearchResultsContent() {
 
                 {/* PAGINATION CONTROLS */}
                 {totalPages > 1 && (
-                  <div className="mt-12 flex items-center justify-center gap-2">
+                  <div className="mt-12 flex flex-wrap items-center justify-center gap-2">
                     <button
                       onClick={() => {
                         const newPage = Math.max(1, page - 1);
@@ -452,13 +452,13 @@ function SearchResultsContent() {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
                       disabled={page <= 1}
-                      className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0"
                       title="Previous page"
                     >
                       <ChevronLeft className="w-5 h-5" />
                     </button>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center justify-center gap-1.5">
                       {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                         <button
                           key={p}
@@ -467,7 +467,7 @@ function SearchResultsContent() {
                             updateUrl({ page: p });
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }}
-                          className={`w-9 h-9 rounded-xl text-xs font-bold transition-colors ${
+                          className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl text-xs font-bold transition-colors shrink-0 ${
                             page === p
                               ? 'bg-indigo-600 text-white shadow-md'
                               : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -486,7 +486,7 @@ function SearchResultsContent() {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
                       disabled={page >= totalPages}
-                      className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0"
                       title="Next page"
                     >
                       <ChevronRight className="w-5 h-5" />
@@ -549,7 +549,7 @@ function SearchResultsContent() {
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
             onClick={() => setMobileFiltersOpen(false)}
           />
-          <div className="relative ml-auto w-full max-w-xs bg-white dark:bg-slate-900 h-full shadow-2xl p-5 flex flex-col justify-between overflow-y-auto z-10">
+          <div className="relative ml-auto w-full max-w-[85vw] sm:max-w-xs bg-white dark:bg-slate-900 h-full shadow-2xl p-4 sm:p-5 flex flex-col justify-between overflow-y-auto z-10">
             <div className="space-y-6">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
                 <h3 className="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">

@@ -148,27 +148,29 @@ export default function SecurePdfReader({
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* TOP BAR */}
-      <header className="bg-slate-900 border-b border-slate-800 px-4 py-3 sticky top-0 z-50 flex flex-wrap items-center justify-between gap-4 shadow-xl">
-        <div className="flex items-center gap-3">
+      <header className="bg-slate-900 border-b border-slate-800 px-3 sm:px-4 py-2.5 sm:py-3 sticky top-0 z-50 flex flex-wrap items-center justify-between gap-2 sm:gap-4 shadow-xl">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <Link
             href={`/notes/${note.slug}`}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors"
+            className="p-2 sm:py-2.5 sm:px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors shrink-0"
+            title="Back to Details"
           >
-            <ArrowLeft className="w-4 h-4" /> Back to Details
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Back to Details</span>
           </Link>
 
-          <div className="hidden md:block">
-            <h1 className="font-extrabold text-sm text-white truncate max-w-sm">{note.title}</h1>
-            <p className="text-[11px] text-indigo-400 font-semibold">
+          <div className="min-w-0">
+            <h1 className="font-extrabold text-xs sm:text-sm text-white truncate max-w-[140px] xs:max-w-[200px] sm:max-w-sm">{note.title}</h1>
+            <p className="text-[10px] sm:text-[11px] text-indigo-400 font-semibold truncate">
               {note.subject} • {note.university} ({note.page_count} Pages)
             </p>
           </div>
         </div>
 
         {/* UNLOCKED OR SAMPLE STATUS */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <span
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold ${
               isUnlocked
                 ? 'bg-emerald-950 border border-emerald-800 text-emerald-300'
                 : 'bg-amber-950 border border-amber-800 text-amber-300'
@@ -176,20 +178,20 @@ export default function SecurePdfReader({
           >
             {isUnlocked ? (
               <>
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Full Note Unlocked ({note.page_count} Pages)</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Unlocked ({note.page_count}p)</span>
               </>
             ) : (
               <>
-                <Lock className="w-3.5 h-3.5 text-amber-400" />
-                <span>Sample Preview: First 4 Pages Free</span>
+                <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Sample Preview (4p)</span>
               </>
             )}
           </span>
         </div>
 
         {/* ACTIONS */}
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-1.5 sm:gap-2 text-xs shrink-0">
           {/* VIEW MODE TOGGLE */}
           <div className="hidden sm:flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
             <button
@@ -219,23 +221,23 @@ export default function SecurePdfReader({
             <button
               onClick={handleDownload}
               disabled={downloading}
-              className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all hover:scale-105 cursor-pointer disabled:opacity-50"
+              className="py-2 sm:py-2.5 px-3 sm:px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-1.5 sm:gap-2 shadow-lg shadow-emerald-600/30 transition-all hover:scale-105 cursor-pointer disabled:opacity-50"
               title="Download complete PDF notes"
             >
               {downloading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5" />
               )}
-              <span>Download PDF</span>
+              <span>Download</span>
             </button>
           ) : (
             <button
               onClick={handlePurchaseRedirect}
-              className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all hover:scale-105 cursor-pointer"
+              className="py-2 sm:py-2.5 px-3 sm:px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all hover:scale-105 cursor-pointer"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>Unlock All Pages ({formatPrice(note.price)})</span>
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>Unlock ({formatPrice(note.price)})</span>
             </button>
           )}
 
@@ -244,10 +246,10 @@ export default function SecurePdfReader({
             href={nativePdfUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-colors border border-slate-700"
+            className="p-2 sm:p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-colors border border-slate-700"
             title="Open in Fullscreen Browser Tab"
           >
-            <ExternalLink className="w-4 h-4" />
+            <ExternalLink className="w-3.5 h-3.5" />
           </a>
         </div>
       </header>

@@ -217,13 +217,13 @@ function MarketplaceContent() {
 
         {/* MOBILE FILTER MODAL */}
         {mobileFilterOpen && (
-          <div className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md mx-auto space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-extrabold text-slate-900 dark:text-white">Filter Notes</h3>
+          <div className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-md mx-auto space-y-4 shadow-2xl my-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white">Filter Notes</h3>
                 <button
                   onClick={() => setMobileFilterOpen(false)}
-                  className="text-sm text-slate-500 font-bold"
+                  className="text-xs sm:text-sm text-indigo-600 dark:text-indigo-400 font-bold px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   Close
                 </button>

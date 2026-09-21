@@ -34,6 +34,12 @@ export default function Navbar() {
     setIsMounted(true);
   }, []);
 
+  // Close menus on route change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+    setIsUserMenuOpen(false);
+  }, [pathname]);
+
   const notifications = isMounted && user ? store.getNotificationsByUser(user.id) : [];
   const unreadCount = notifications.filter((n) => !n.is_read).length;
   const wishlistItems = isMounted && user ? store.getWishlistByUser(user.id) : [];
@@ -173,100 +179,107 @@ export default function Navbar() {
                   </button>
 
                   {isUserMenuOpen && (
-                    <div
-                      className="absolute right-0 mt-2 w-60 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200"
-                      onClick={() => setIsUserMenuOpen(false)}
-                    >
-                      <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
-                        <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{user.full_name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
-                        <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                          {user.role}
-                        </span>
-                      </div>
-
-                      <Link
-                        href="/dashboard"
-                        className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    <>
+                      {/* Invisible backdrop to dismiss menu on click outside */}
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      />
+                      <div
+                        className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200"
+                        onClick={() => setIsUserMenuOpen(false)}
                       >
-                        <LayoutDashboard className="w-4 h-4 text-indigo-500" />
-                        Buyer Dashboard
-                      </Link>
+                        <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
+                          <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{user.full_name}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
+                          <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                            {user.role}
+                          </span>
+                        </div>
 
-                      <Link
-                        href="/dashboard/purchases"
-                        className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-                      >
-                        <ShoppingBag className="w-4 h-4 text-emerald-500" />
-                        My Purchases
-                      </Link>
-
-                      <Link
-                        href="/dashboard/seller"
-                        className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-                      >
-                        <PlusCircle className="w-4 h-4 text-amber-500" />
-                        Seller Dashboard
-                      </Link>
-
-                      <Link
-                        href="/dashboard/seller/notes"
-                        className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-                      >
-                        <FileText className="w-4 h-4 text-blue-500" />
-                        My Uploaded Notes
-                      </Link>
-
-                      <Link
-                        href="/dashboard/profile"
-                        className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-                      >
-                        <UserIcon className="w-4 h-4 text-purple-500" />
-                        Profile Settings
-                      </Link>
-
-                      {user.role === 'admin' && (
                         <Link
-                          href="/admin"
-                          className="flex items-center gap-2.5 px-4 py-2 text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                          href="/dashboard"
+                          className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                         >
-                          <Shield className="w-4 h-4 text-rose-500" />
-                          Admin Panel
+                          <LayoutDashboard className="w-4 h-4 text-indigo-500 shrink-0" />
+                          <span>Buyer Dashboard</span>
                         </Link>
-                      )}
 
-                      <div className="border-t border-slate-100 dark:border-slate-800 mt-1 pt-1">
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            await logout();
-                            window.location.href = '/';
-                          }}
-                          className="w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-left transition-colors cursor-pointer"
+                        <Link
+                          href="/dashboard/purchases"
+                          className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                         >
-                          <LogOut className="w-4 h-4" />
-                          Log out
-                        </button>
+                          <ShoppingBag className="w-4 h-4 text-emerald-500 shrink-0" />
+                          <span>My Purchases</span>
+                        </Link>
+
+                        <Link
+                          href="/dashboard/seller"
+                          className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                        >
+                          <PlusCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                          <span>Seller Dashboard</span>
+                        </Link>
+
+                        <Link
+                          href="/dashboard/seller/notes"
+                          className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                        >
+                          <FileText className="w-4 h-4 text-blue-500 shrink-0" />
+                          <span>My Uploaded Notes</span>
+                        </Link>
+
+                        <Link
+                          href="/dashboard/profile"
+                          className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                        >
+                          <UserIcon className="w-4 h-4 text-purple-500 shrink-0" />
+                          <span>Profile Settings</span>
+                        </Link>
+
+                        {user.role === 'admin' && (
+                          <Link
+                            href="/admin"
+                            className="flex items-center gap-2.5 px-4 py-2 text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                          >
+                            <Shield className="w-4 h-4 text-rose-500 shrink-0" />
+                            <span>Admin Panel</span>
+                          </Link>
+                        )}
+
+                        <div className="border-t border-slate-100 dark:border-slate-800 mt-1 pt-1">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await logout();
+                              window.location.href = '/';
+                            }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-left transition-colors cursor-pointer"
+                          >
+                            <LogOut className="w-4 h-4 shrink-0" />
+                            <span>Log out</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    </>
                   )}
                 </div>
               </>
             ) : (
               /* LOGGED OUT STATE: LOGIN & REGISTER BUTTONS */
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <Link
                   href="/login"
-                  className="px-3.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5"
+                  className="px-2.5 sm:px-3.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1"
                 >
-                  <LogIn className="w-3.5 h-3.5" />
+                  <LogIn className="w-3.5 h-3.5 shrink-0" />
                   <span>Log in</span>
                 </Link>
                 <Link
                   href="/register"
                   className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors"
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
+                  <UserPlus className="w-3.5 h-3.5 shrink-0" />
                   <span>Register</span>
                 </Link>
               </div>
@@ -276,6 +289,7 @@ export default function Navbar() {
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="md:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Toggle Navigation Menu"
             >
               {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -285,35 +299,122 @@ export default function Navbar() {
 
       {/* MOBILE MENU DRAWER */}
       {isMobileMenuOpen && (
-        <div className="md:hidden border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 pt-2 pb-4 space-y-2">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={`block px-3 py-2 rounded-lg text-base font-medium ${
-                pathname === link.href
-                  ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-bold'
-                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
-            >
-              {link.name}
-            </Link>
-          ))}
+        <div className="md:hidden border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 pt-3 pb-5 space-y-3 max-h-[calc(100vh-4rem)] overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-150">
+          {/* USER INFO HEADER (IF LOGGED IN) */}
+          {user && (
+            <div className="p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {user.avatar_url ? (
+                  <img
+                    src={user.avatar_url}
+                    alt={user.full_name}
+                    className="w-9 h-9 rounded-full object-cover border-2 border-indigo-500 shrink-0"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0">
+                    {getInitials(user.full_name)}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-extrabold text-slate-900 dark:text-white truncate">{user.full_name}</p>
+                  <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 shrink-0">
+                {user.role}
+              </span>
+            </div>
+          )}
 
-          {!user && (
+          {/* MAIN NAV LINKS */}
+          <div className="space-y-1">
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`block px-3 py-2 rounded-xl text-sm font-semibold ${
+                  pathname === link.href
+                    ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-bold'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                {link.name}
+              </Link>
+            ))}
+          </div>
+
+          {/* AUTHENTICATED USER SHORTCUTS */}
+          {user ? (
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 py-1">
+                Account &amp; Selling
+              </div>
+              <Link
+                href="/dashboard"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <LayoutDashboard className="w-4 h-4 text-indigo-500 shrink-0" />
+                <span>Buyer Dashboard</span>
+              </Link>
+              <Link
+                href="/dashboard/seller"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <PlusCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>Seller Dashboard</span>
+              </Link>
+              <Link
+                href="/dashboard/seller/notes"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <FileText className="w-4 h-4 text-blue-500 shrink-0" />
+                <span>My Uploaded Notes</span>
+              </Link>
+              <Link
+                href="/dashboard/purchases"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <ShoppingBag className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>My Purchases</span>
+              </Link>
+              <Link
+                href="/dashboard/profile"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <UserIcon className="w-4 h-4 text-purple-500 shrink-0" />
+                <span>Profile Settings</span>
+              </Link>
+              <button
+                onClick={async () => {
+                  setIsMobileMenuOpen(false);
+                  await logout();
+                  window.location.href = '/';
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-left"
+              >
+                <LogOut className="w-4 h-4 shrink-0" />
+                <span>Log out</span>
+              </button>
+            </div>
+          ) : (
             <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex gap-2">
               <Link
                 href="/login"
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="flex-1 py-2 text-center rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200"
+                className="flex-1 py-2.5 text-center rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200"
               >
                 Log in
               </Link>
               <Link
                 href="/register"
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="flex-1 py-2 text-center rounded-xl bg-indigo-600 text-white text-sm font-bold"
+                className="flex-1 py-2.5 text-center rounded-xl bg-indigo-600 text-white text-xs font-bold shadow-xs"
               >
                 Register
               </Link>

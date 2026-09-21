@@ -185,11 +185,11 @@ export default function SearchBar({
     <div ref={containerRef} className={`relative w-full ${className}`}>
       <form onSubmit={handleSubmit} className="w-full">
         <div className="relative flex items-center shadow-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent transition-all">
-          <div className="pl-4 text-indigo-500 flex items-center">
+          <div className="pl-3 sm:pl-4 text-indigo-500 flex items-center shrink-0">
             {isLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+              <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-indigo-600" />
             ) : (
-              <Search className="w-5 h-5" />
+              <Search className="w-4 h-4 sm:w-5 sm:h-5" />
             )}
           </div>
 
@@ -208,37 +208,39 @@ export default function SearchBar({
             autoFocus={autoFocus}
             autoComplete="off"
             spellCheck="false"
-            className="w-full py-4 px-3 text-slate-900 dark:text-white placeholder-slate-400 bg-transparent text-sm md:text-base focus:outline-hidden"
+            className="w-full min-w-0 py-3 sm:py-4 px-2 sm:px-3 text-slate-900 dark:text-white placeholder-slate-400 bg-transparent text-xs sm:text-sm md:text-base focus:outline-hidden"
           />
 
           {query && (
             <button
               type="button"
               onClick={handleClear}
-              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors shrink-0"
               title="Clear search"
             >
               <X className="w-4 h-4" />
             </button>
           )}
 
-          <div className="pr-2 flex items-center gap-2">
+          <div className="pr-1.5 sm:pr-2 flex items-center gap-1 sm:gap-2 shrink-0">
             {onToggleMobileFilters && (
               <button
                 type="button"
                 onClick={onToggleMobileFilters}
-                className="lg:hidden p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs flex items-center gap-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                className="lg:hidden p-2 sm:px-2.5 sm:py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                title="Filters"
               >
-                <SlidersHorizontal className="w-4 h-4" />
-                <span>Filters</span>
+                <SlidersHorizontal className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Filters</span>
               </button>
             )}
 
             <button
               type="submit"
-              className="py-2.5 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition-all active:scale-95"
+              className="py-2 px-3 sm:py-2.5 sm:px-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95 flex items-center gap-1 shrink-0"
             >
-              Search
+              <Search className="w-3.5 h-3.5 sm:hidden" />
+              <span className="hidden sm:inline">Search</span>
             </button>
           </div>
         </div>
@@ -247,7 +249,7 @@ export default function SearchBar({
       {/* REAL-TIME AUTO-SUGGESTIONS DROPDOWN */}
       {isOpen && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="p-2.5 max-h-[380px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
+          <div className="p-2 sm:p-2.5 max-h-[380px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
             {suggestions.length > 0 ? (
               suggestions.map((item, idx) => {
                 const isSelected = idx === selectedIndex;
@@ -257,14 +259,14 @@ export default function SearchBar({
                     href={`/notes/${item.slug}`}
                     onClick={() => setIsOpen(false)}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    className={`flex items-center gap-3.5 p-3 rounded-xl transition-all ${
+                    className={`flex items-center gap-2.5 sm:gap-3.5 p-2.5 sm:p-3 rounded-xl transition-all ${
                       isSelected
                         ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-950 dark:text-indigo-100'
                         : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-800 dark:text-slate-200'
                     }`}
                   >
                     {/* Thumbnail or Fallback Icon */}
-                    <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 flex items-center justify-center">
                       {item.thumbnail_url ? (
                         <img
                           src={item.thumbnail_url}
@@ -272,18 +274,18 @@ export default function SearchBar({
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <FileText className="w-6 h-6 text-indigo-500" />
+                        <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-500" />
                       )}
                     </div>
 
                     {/* Note details */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
                           {item.title}
                         </h4>
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                      <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                         <span className="font-semibold text-indigo-600 dark:text-indigo-400">
                           {item.subject}
                         </span>
@@ -293,9 +295,9 @@ export default function SearchBar({
                     </div>
 
                     {/* Price and page count badge */}
-                    <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                    <div className="text-right shrink-0 flex flex-col items-end gap-0.5">
                       <span
-                        className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                        className={`text-[10px] sm:text-xs font-black px-2 py-0.5 rounded-full ${
                           item.is_free
                             ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
                             : 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
@@ -303,8 +305,8 @@ export default function SearchBar({
                       >
                         {item.is_free ? 'FREE' : formatPrice(item.price)}
                       </span>
-                      <span className="text-[11px] text-slate-400 font-medium">
-                        {item.page_count} pages
+                      <span className="text-[10px] sm:text-[11px] text-slate-400 font-medium">
+                        {item.page_count} p.
                       </span>
                     </div>
                   </Link>

@@ -281,101 +281,106 @@ export default function RealPdfCanvasViewer({
   return (
     <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col w-full select-none">
       {/* HEADER TOOLBAR */}
-      <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-        {/* LEFT: TITLE & ACCESS BADGE */}
-        <div className="flex items-center gap-2.5">
-          <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span className="font-extrabold text-white truncate max-w-[200px] sm:max-w-xs">
-            {note.title}
-          </span>
+      <div className="bg-slate-950 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 text-xs">
+        {/* ROW 1 (or Left on Desktop): TITLE & ACCESS BADGE */}
+        <div className="flex items-center justify-between sm:justify-start gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span className="font-extrabold text-white truncate max-w-[170px] sm:max-w-xs text-xs">
+              {note.title}
+            </span>
+          </div>
           <span
-            className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
               isUnlocked
                 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
                 : 'bg-amber-950 text-amber-400 border border-amber-800'
             }`}
           >
             <ShieldCheck className="w-3 h-3" />
-            {isUnlocked ? 'All Pages Unlocked' : `Sample Preview (1–${allowedPageLimit} of ${totalPages})`}
+            <span>{isUnlocked ? 'Unlocked' : `Sample (${allowedPageLimit}/${totalPages})`}</span>
           </span>
         </div>
 
-        {/* CENTER: PAGE NAVIGATOR & DIRECT JUMP */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handlePrev}
-            disabled={currentPage === 1}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-colors cursor-pointer"
-            title="Previous Page"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-
-          <div className="flex items-center gap-1 font-mono text-xs font-extrabold text-slate-200 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">
-            <span className="text-slate-400 text-[10px]">Page</span>
-            <input
-              type="number"
-              min={1}
-              max={totalPages}
-              value={pageInput}
-              onChange={(e) => setPageInput(e.target.value)}
-              onBlur={handlePageInputSubmit}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handlePageInputSubmit();
-              }}
-              className="w-14 bg-slate-800 text-center text-white rounded px-1 py-0.5 border border-slate-700 text-xs font-bold focus:outline-hidden focus:border-indigo-500"
-              title="Type page number and press Enter"
-            />
-            <span className="text-slate-400">/ {totalPages}</span>
-          </div>
-
-          <button
-            onClick={handleNext}
-            disabled={currentPage === totalPages}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-colors cursor-pointer"
-            title="Next Page"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* RIGHT: ZOOM & ACTION BUTTONS */}
-        <div className="flex items-center gap-2">
-          <div className="hidden sm:flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-xl border border-slate-800">
+        {/* ROW 2 (or Right on Desktop): CONTROLS & NAVIGATOR */}
+        <div className="flex items-center justify-between sm:justify-end gap-2 flex-wrap">
+          {/* CENTER: PAGE NAVIGATOR & DIRECT JUMP */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
-              onClick={() => setZoom((z) => Math.max(70, z - 15))}
-              className="p-1 text-slate-400 hover:text-white cursor-pointer"
-              title="Zoom Out"
+              onClick={handlePrev}
+              disabled={currentPage === 1}
+              className="p-1 sm:p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-colors cursor-pointer"
+              title="Previous Page"
             >
-              <ZoomOut className="w-3.5 h-3.5" />
+              <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="font-mono text-[11px] font-bold text-indigo-400 w-9 text-center">
-              {zoom}%
-            </span>
+
+            <div className="flex items-center gap-1 font-mono text-xs font-extrabold text-slate-200 bg-slate-900 px-1.5 sm:px-2 py-1 rounded-lg border border-slate-800">
+              <span className="text-slate-400 text-[10px]">Pg</span>
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value)}
+                onBlur={handlePageInputSubmit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handlePageInputSubmit();
+                }}
+                className="w-10 sm:w-12 bg-slate-800 text-center text-white rounded px-1 py-0.5 border border-slate-700 text-xs font-bold focus:outline-hidden focus:border-indigo-500"
+                title="Type page number and press Enter"
+              />
+              <span className="text-slate-400">/ {totalPages}</span>
+            </div>
+
             <button
-              onClick={() => setZoom((z) => Math.min(200, z + 15))}
-              className="p-1 text-slate-400 hover:text-white cursor-pointer"
-              title="Zoom In"
+              onClick={handleNext}
+              disabled={currentPage === totalPages}
+              className="p-1 sm:p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition-colors cursor-pointer"
+              title="Next Page"
             >
-              <ZoomIn className="w-3.5 h-3.5" />
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
-          {onDownload && isUnlocked && (
-            <button
-              onClick={onDownload}
-              className="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-              title="Download full PDF document"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Download</span>
-            </button>
-          )}
+          {/* RIGHT: ZOOM & ACTION BUTTONS */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-900 px-1.5 sm:px-2 py-1 rounded-xl border border-slate-800">
+              <button
+                onClick={() => setZoom((z) => Math.max(50, z - 15))}
+                className="p-1 text-slate-400 hover:text-white cursor-pointer"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className="font-mono text-[10px] sm:text-[11px] font-bold text-indigo-400 w-8 sm:w-9 text-center">
+                {zoom}%
+              </span>
+              <button
+                onClick={() => setZoom((z) => Math.min(200, z + 15))}
+                className="p-1 text-slate-400 hover:text-white cursor-pointer"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {onDownload && isUnlocked && (
+              <button
+                onClick={onDownload}
+                className="py-1 px-2.5 sm:py-1.5 sm:px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+                title="Download full PDF document"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Download</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* MAIN VIEWPORT: REAL CANVAS OR LOCKED OVERLAY */}
-      <div className="relative min-h-[520px] max-h-[78vh] overflow-auto bg-slate-950 p-4 sm:p-8 flex items-center justify-center">
+      <div className="relative min-h-[350px] sm:min-h-[520px] max-h-[70vh] sm:max-h-[78vh] overflow-auto bg-slate-950 p-2 sm:p-8 flex items-center justify-center">
         {loading ? (
           <div className="flex flex-col items-center justify-center space-y-3 py-20">
             <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
