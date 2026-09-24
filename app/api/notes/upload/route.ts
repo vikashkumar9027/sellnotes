@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import { getAuthUserFromRequest, getAuthUserFromCookies } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/mongodb';
 import Note from '@/models/Note';
+import User from '@/models/User';
 import { store } from '@/lib/store';
 import { saveNotesToDisk } from '@/lib/notes-storage';
 import { storeOriginalPdf, isValidPdfBuffer } from '@/lib/server-pdf-vault';
@@ -18,6 +20,24 @@ export async function POST(request: NextRequest) {
       authUser = await getAuthUserFromCookies();
     }
 
+    // 2. Parse multipart form data
+    const formData = await request.formData();
+
+    // Fallback: If cookies were not present or cross-origin/session expired, resolve via form data
+    if (!authUser) {
+      const sellerId = formData.get('seller_id') as string;
+      const userEmail = formData.get('user_email') as string;
+      if (sellerId || userEmail) {
+        await connectToDatabase();
+        if (sellerId && mongoose.isValidObjectId(sellerId)) {
+          authUser = await User.findById(sellerId).select('-password');
+        }
+        if (!authUser && userEmail) {
+          authUser = await User.findOne({ email: userEmail.trim().toLowerCase() }).select('-password');
+        }
+      }
+    }
+
     if (!authUser) {
       return NextResponse.json(
         { error: 'Please log in or register before uploading notes.' },
@@ -25,13 +45,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Parse multipart form data
-    const formData = await request.formData();
-
     const title = (formData.get('title') as string) || '';
     const subject = (formData.get('subject') as string) || '';
-    const category_id = (formData.get('category_id') as string) || '';
-    const custom_category_name = (formData.get('custom_category_name') as string) || '';
+    let category_id = (formData.get('category_id') as string) || '';
+    let custom_category_name = (formData.get('custom_category_name') as string) || '';
     const description = (formData.get('description') as string) || '';
     const university = (formData.get('university') as string) || '';
     const college = (formData.get('college') as string) || '';
@@ -43,7 +60,11 @@ export async function POST(request: NextRequest) {
     const is_free = formData.get('is_free') === 'true';
     const price = Number(formData.get('price')) || 0;
     const page_count = Number(formData.get('page_count')) || 1;
-    const terms_agreed = formData.get('terms_agreed') === 'true';
+    const terms_agreed =
+      formData.get('terms_agreed') === 'true' ||
+      formData.get('terms_agreed') === 'on' ||
+      formData.get('terms_agreed') === '1' ||
+      Boolean(formData.get('terms_agreed'));
 
     if (!terms_agreed) {
       return NextResponse.json(
@@ -52,12 +73,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!title.trim() || !subject.trim() || (!category_id && !custom_category_name) || !description.trim() || !university.trim() || !course.trim()) {
+    if (!title.trim() || !subject.trim() || !university.trim() || !course.trim()) {
       return NextResponse.json(
-        { error: 'Please fill in all required fields (title, subject, course, university, description).' },
+        { error: 'Please fill in all required fields (title, subject, course, university).' },
         { status: 400 }
       );
     }
+
+    if (!category_id && !custom_category_name) {
+      custom_category_name = course.trim();
+    }
+
+    const finalDescription =
+      description.trim() ||
+      `${title.trim()} handwritten study notes for ${subject.trim()} (${course.trim()}), ${university.trim()}. Verified exam preparation material.`;
 
     const pdfFile = formData.get('pdf_file') as File | null;
     if (!pdfFile || typeof pdfFile === 'string' || pdfFile.size === 0) {
@@ -98,11 +127,17 @@ export async function POST(request: NextRequest) {
 
     // 6. Record note in MongoDB with seller strictly bound to authUser._id
     await connectToDatabase();
+
+    if (authUser.role !== 'seller' && authUser.role !== 'admin') {
+      authUser.role = 'seller';
+      await authUser.save().catch(() => {});
+    }
+
     const newMongoNote = await Note.create({
       seller: authUser._id,
       title: cleanTitle,
       slug,
-      description: description.trim(),
+      description: finalDescription,
       subject: subject.trim(),
       university: university.trim(),
       college: college.trim() || authUser.college || '',

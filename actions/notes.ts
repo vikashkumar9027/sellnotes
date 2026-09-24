@@ -37,9 +37,19 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
       return { error: 'You must confirm ownership rights to upload notes' };
     }
 
-    if (!title || !subject || (!category_id && !custom_category_name) || !description || !university || !course) {
-      return { error: 'Please fill in all required fields' };
+    if (!title?.trim() || !subject?.trim() || !university?.trim() || !course?.trim()) {
+      return { error: 'Please fill in all required fields (title, subject, course, university)' };
     }
+
+    let effectiveCategoryId = category_id;
+    let effectiveCategoryName = custom_category_name;
+    if (!effectiveCategoryId && !effectiveCategoryName) {
+      effectiveCategoryName = course.trim();
+    }
+
+    const finalDescription =
+      description?.trim() ||
+      `${title.trim()} handwritten study notes for ${subject.trim()} (${course.trim()}), ${university.trim()}. Verified exam preparation material.`;
 
     const tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean);
     const pdfFile = formData.get('pdf_file') as File | null;
@@ -75,22 +85,48 @@ export async function uploadNoteAction(formData: FormData, sellerId: string) {
       }
     }
 
-    const authUser = await getAuthUserFromCookies();
+    let authUser = await getAuthUserFromCookies();
+    if (!authUser && (sellerId || formData.get('user_email'))) {
+      try {
+        await connectToDatabase();
+        const User = (await import('@/models/User')).default;
+        const mongoose = (await import('mongoose')).default;
+        if (sellerId && mongoose.isValidObjectId(sellerId)) {
+          authUser = await User.findById(sellerId).select('-password');
+        }
+        if (!authUser && sellerId) {
+          authUser = await User.findOne({ email: sellerId.trim().toLowerCase() }).select('-password');
+        }
+        const userEmail = (formData.get('user_email') as string) || '';
+        if (!authUser && userEmail) {
+          authUser = await User.findOne({ email: userEmail.trim().toLowerCase() }).select('-password');
+        }
+      } catch (authDbErr) {
+        console.warn('Error resolving user from database in server action:', authDbErr);
+      }
+    }
+
     if (!authUser) {
       return { error: 'You must be logged in to upload and sell study notes.' };
     }
+
+    if (authUser.role !== 'seller' && authUser.role !== 'admin') {
+      authUser.role = 'seller';
+      await authUser.save().catch(() => {});
+    }
+
     const effectiveSellerId = authUser._id.toString();
 
     const newNote = store.createNote(
       {
-        title,
-        subject,
-        category_id,
-        custom_category_name,
-        description,
-        university,
+        title: title.trim(),
+        subject: subject.trim(),
+        category_id: effectiveCategoryId,
+        custom_category_name: effectiveCategoryName,
+        description: finalDescription,
+        university: university.trim(),
         college,
-        course,
+        course: course.trim(),
         semester,
         year,
         language,

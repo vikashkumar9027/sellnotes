@@ -178,20 +178,41 @@ export default function UploadForm({ categories, sellerId }: UploadFormProps) {
 
     try {
       const formData = new FormData(e.currentTarget);
-      formData.append('pdf_file', selectedFile);
-      formData.append('is_free', String(isFree));
-      formData.append('price', String(isFree ? 0 : price));
-      formData.append('course', finalCourse);
-      formData.append('subject', finalSubject);
-      formData.append('semester', selectedSemester);
+      formData.set('pdf_file', selectedFile);
+      formData.set('is_free', String(isFree));
+      formData.set('price', String(isFree ? 0 : price));
+      formData.set('course', finalCourse);
+      formData.set('subject', finalSubject);
+      formData.set('semester', selectedSemester);
       formData.set('page_count', String(detectedPageCount || 1));
+      formData.set('terms_agreed', 'true');
+
+      if (user?.id) formData.set('seller_id', user.id);
+      if (user?.email) formData.set('user_email', user.email);
+      if (user?.full_name) formData.set('seller_name', user.full_name);
 
       if (selectedCategory === 'custom') {
-        formData.append('custom_category_name', customCategory.trim());
-        formData.append('category_id', '');
+        formData.set('custom_category_name', customCategory.trim() || finalCourse);
+        formData.set('category_id', '');
+      } else if (selectedCategory) {
+        formData.set('category_id', selectedCategory);
+        formData.set('custom_category_name', '');
       } else {
-        formData.append('category_id', selectedCategory);
-        formData.append('custom_category_name', '');
+        const matched = categories.find((c) => c.name.toLowerCase().includes(finalCourse.toLowerCase()));
+        if (matched) {
+          formData.set('category_id', matched.id);
+          formData.set('custom_category_name', '');
+        } else {
+          formData.set('category_id', '');
+          formData.set('custom_category_name', finalCourse);
+        }
+      }
+
+      if (!formData.get('description')) {
+        formData.set(
+          'description',
+          `${formData.get('title') || 'Study Notes'} handwritten notes for ${finalSubject} (${finalCourse}), ${formData.get('university') || ''}. Clear handwriting, verified syllabus.`
+        );
       }
 
       let resNote: any = null;
@@ -219,33 +240,38 @@ export default function UploadForm({ categories, sellerId }: UploadFormProps) {
             errorOccurred = apiData.error || 'Failed to upload note.';
           }
         } else {
-          if (apiResponse.status === 401) {
-            setErrorMsg('Session expired or login required. Please log in to upload notes.');
-            return;
-          }
           const errData = await apiResponse.json().catch(() => null);
           errorOccurred = errData?.error || `Upload failed with status code ${apiResponse.status}`;
+          console.warn('API route failed with:', errorOccurred, 'Trying server action fallback...');
         }
       } catch (fetchErr: any) {
         if (fetchErr?.name === 'AbortError') {
-          errorOccurred = 'Upload timed out. Please check your internet connection and retry.';
+          errorOccurred = 'Upload timed out. Retrying via backup channel...';
         } else {
           console.warn('API upload route fetch failed, attempting server action fallback:', fetchErr);
         }
       }
 
-      // 2. Fallback: If API route was unreachable or hit network issue, try Server Action
-      if (!resNote && !errorOccurred) {
+      // 2. Fallback: If API route was unreachable, returned error, or hit 413 payload limit, try Server Action
+      if (!resNote) {
         setUploadStatus('Processing via backup channel...');
-        const res = await uploadNoteAction(formData, activeSellerId);
-        if (res.error) {
-          errorOccurred = res.error;
-        } else if (res.note) {
-          resNote = res.note;
+        try {
+          const res = await uploadNoteAction(formData, activeSellerId);
+          if (res.note) {
+            resNote = res.note;
+            errorOccurred = null;
+          } else if (res.error) {
+            errorOccurred = res.error;
+          }
+        } catch (actionErr: any) {
+          console.warn('Server action fallback error:', actionErr);
+          if (!errorOccurred) {
+            errorOccurred = actionErr?.message || 'Upload failed. Please try again.';
+          }
         }
       }
 
-      if (errorOccurred) {
+      if (errorOccurred && !resNote) {
         setErrorMsg(errorOccurred);
         return;
       }

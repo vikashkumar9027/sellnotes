@@ -16,8 +16,9 @@ export interface StoredPdfResult {
  */
 export function isValidPdfBuffer(buffer: Buffer): boolean {
   if (!buffer || buffer.length < 5) return false;
-  const header = buffer.subarray(0, 5).toString('ascii');
-  return header === '%PDF-';
+  // Standard PDF begins with %PDF-, but scanner apps/BOM may offset it slightly
+  const headChunk = buffer.subarray(0, Math.min(buffer.length, 1024)).toString('latin1');
+  return headChunk.includes('%PDF-');
 }
 
 /**

@@ -59,33 +59,46 @@ export async function connectToDatabase(): Promise<typeof mongoose> {
     uri = uri.replace(/\.mongodb\.net\/?$/, '.mongodb.net/notemart');
   }
 
-  // If URI still contains dummy example text, give clear error
-  if (
-    uri.includes('xxxxx') ||
-    uri.includes('YOUR_')
-  ) {
-    const errorMsg = 'MongoDB Atlas URI me placeholder "xxxxx" laga hua hai. Kripya Vercel me apna real MongoDB Atlas connection string dalein.';
-    console.warn(errorMsg);
-    throw new Error(errorMsg);
+  // 5. Bypass fragile DNS SRV lookups on networks/Windows where SRV fails (querySrv ECONNREFUSED)
+  if (uri.startsWith('mongodb+srv://') && uri.includes('cluster0.atk8e6d.mongodb.net')) {
+    const credMatch = uri.match(/mongodb\+srv:\/\/([^@]+)@cluster0\.atk8e6d\.mongodb\.net\/?([^?]*)(\?.*)?/);
+    if (credMatch) {
+      const credentials = credMatch[1];
+      const dbName = credMatch[2] || 'notemart';
+      uri = `mongodb://${credentials}@ac-obd8wen-shard-00-00.atk8e6d.mongodb.net:27017,ac-obd8wen-shard-00-01.atk8e6d.mongodb.net:27017,ac-obd8wen-shard-00-02.atk8e6d.mongodb.net:27017/${dbName}?ssl=true&replicaSet=atlas-flnl1r-shard-0&authSource=admin&retryWrites=true&w=majority`;
+    }
   }
 
-  if (isVercel && (!process.env.MONGODB_URI || uri.includes('127.0.0.1') || uri.includes('localhost'))) {
-    const errorMsg = 'Vercel par remote MONGODB_URI environment variable set nahi hai. Kripya Vercel me MongoDB Atlas URI configure karein.';
-    console.warn(errorMsg);
-    throw new Error(errorMsg);
+  // Ensure Google DNS is set right before connecting
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+  } catch {
+    // runtime does not support dns.setServers
   }
 
   if (!cached!.promise) {
     const opts = {
       bufferCommands: false,
       maxPoolSize: 10,
-      serverSelectionTimeoutMS: isVercel ? 2500 : 5000,
-      connectTimeoutMS: isVercel ? 2500 : 5000,
+      serverSelectionTimeoutMS: isVercel ? 4000 : 6000,
+      connectTimeoutMS: isVercel ? 4000 : 6000,
     };
 
     cached!.promise = mongoose.connect(uri, opts).then((m) => {
       console.log('MongoDB connected successfully:', m.connection.name);
       return m;
+    }).catch(async (initialErr) => {
+      // If SRV failure occurred on another Atlas cluster, attempt DNS fallback
+      if (initialErr?.message?.includes('querySrv') || initialErr?.message?.includes('ECONNREFUSED')) {
+        console.warn('Initial SRV connection failed, retrying with Google DNS setServers...');
+        try {
+          dns.setServers(['8.8.8.8', '1.1.1.1']);
+          return await mongoose.connect(uri, opts);
+        } catch (retryErr) {
+          throw retryErr;
+        }
+      }
+      throw initialErr;
     });
   }
 
