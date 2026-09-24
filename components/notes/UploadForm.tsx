@@ -218,6 +218,65 @@ export default function UploadForm({ categories, sellerId }: UploadFormProps) {
       let resNote: any = null;
       let errorOccurred: string | null = null;
 
+      // Check if file exceeds 3.5 MB: Use chunked upload in 2 MB slices to completely prevent Vercel 413 errors
+      if (selectedFile.size > 3.5 * 1024 * 1024) {
+        try {
+          const CHUNK_SIZE = 2 * 1024 * 1024; // 2 MB per slice
+          const totalChunks = Math.ceil(selectedFile.size / CHUNK_SIZE);
+          const uploadId = `up_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+          let chunkResult: any = null;
+
+          for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, selectedFile.size);
+            const chunkBlob = selectedFile.slice(start, end);
+
+            const progressPct = Math.round(((i + 1) / totalChunks) * 100);
+            setUploadStatus(`Uploading part ${i + 1} of ${totalChunks} (${progressPct}%)...`);
+
+            const chunkFormData = new FormData();
+            chunkFormData.set('uploadId', uploadId);
+            chunkFormData.set('chunkIndex', String(i));
+            chunkFormData.set('totalChunks', String(totalChunks));
+            chunkFormData.set('fileName', selectedFile.name);
+            chunkFormData.set('chunk', chunkBlob, selectedFile.name);
+
+            const cRes = await fetch('/api/notes/upload/chunk', {
+              method: 'POST',
+              body: chunkFormData,
+            });
+
+            if (!cRes.ok) {
+              const errData = await cRes.json().catch(() => null);
+              throw new Error(errData?.error || `Upload part ${i + 1} failed with status ${cRes.status}`);
+            }
+
+            const cData = await cRes.json();
+            if (cData.done) {
+              chunkResult = cData;
+            }
+          }
+
+          if (!chunkResult || !chunkResult.pdfPath) {
+            throw new Error('Failed to assemble file parts on server.');
+          }
+
+          // Attach pre-uploaded vault references and delete heavy binary from form payload
+          formData.delete('pdf_file');
+          formData.set('pdf_path', chunkResult.pdfPath);
+          formData.set('gridfs_id', chunkResult.gridFsId || '');
+          formData.set('storage_key', chunkResult.storageKey || '');
+          formData.set('file_size', String(chunkResult.fileSize || selectedFile.size));
+          formData.set('page_count', String(chunkResult.pageCount || detectedPageCount || 1));
+          formData.set('original_filename', selectedFile.name);
+        } catch (chunkErr: any) {
+          console.error('Chunk upload exception:', chunkErr);
+          setErrorMsg(chunkErr?.message || 'Chunked upload failed. Please try again.');
+          return;
+        }
+      }
+
       // 1. Primary path: Use dedicated multipart upload API route with 45s AbortController
       try {
         const controller = new AbortController();

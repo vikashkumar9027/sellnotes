@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { store } from '@/lib/store';
-import { getOriginalPdfBuffer } from '@/lib/server-pdf-vault';
+import { getOriginalPdfBuffer, getBufferFromGridFS } from '@/lib/server-pdf-vault';
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
     const slug = searchParams.get('slug');
     const noteId = searchParams.get('noteId');
     const requestedPath = searchParams.get('path');
+    const gridFsId = searchParams.get('gridFsId');
     const isDownload = searchParams.get('download') === '1' || searchParams.get('download') === 'true';
 
     let note = null;
@@ -21,11 +22,20 @@ export async function GET(request: NextRequest) {
     const sanitizedTitle = title.replace(/[^a-zA-Z0-9_-]/g, '_');
     const fileName = `${sanitizedTitle}.pdf`;
 
-    // 1. Fetch exact original byte-for-byte buffer from server storage vault
-    const fileBuffer = await getOriginalPdfBuffer(
-      requestedPath || (note ? note.pdf_path : null),
-      note ? note.pdf_path : null
-    );
+    // 1. Fetch exact original byte-for-byte buffer from GridFS or server storage vault
+    let fileBuffer: Buffer | null = null;
+    if (gridFsId) {
+      fileBuffer = await getBufferFromGridFS(gridFsId);
+    }
+    if (!fileBuffer && note?.gridfs_id) {
+      fileBuffer = await getBufferFromGridFS(note.gridfs_id);
+    }
+    if (!fileBuffer) {
+      fileBuffer = await getOriginalPdfBuffer(
+        requestedPath || (note ? note.pdf_path : null),
+        note ? note.pdf_path : null
+      );
+    }
 
     if (!fileBuffer) {
       return new NextResponse(

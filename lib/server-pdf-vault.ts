@@ -1,10 +1,14 @@
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
+import mongoose from 'mongoose';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { connectToDatabase } from '@/lib/mongodb';
 
 export interface StoredPdfResult {
   storageKey: string;
   pdfPath: string;
+  gridFsId?: string;
   fileSize: number;
   pageCount: number;
   originalFileName: string;
@@ -63,6 +67,66 @@ export function detectPdfPageCountFromBuffer(buffer: Buffer): number {
 }
 
 /**
+ * Store buffer directly in MongoDB GridFS (permanent serverless cloud storage).
+ */
+export async function uploadBufferToGridFS(
+  buffer: Buffer,
+  originalFileName: string
+): Promise<{ gridFsId: string; fileSize: number; pageCount: number }> {
+  await connectToDatabase();
+  const pageCount = detectPdfPageCountFromBuffer(buffer);
+  const fileSize = buffer.length;
+  const safeName = `${Date.now()}-${originalFileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+
+  const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db!, { bucketName: 'pdfs' });
+  const uploadStream = bucket.openUploadStream(safeName, {
+    metadata: {
+      originalFileName,
+      mimeType: 'application/pdf',
+      pageCount,
+      fileSize,
+      uploadedAt: new Date(),
+    },
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    Readable.from(buffer).pipe(uploadStream).on('finish', () => resolve()).on('error', reject);
+  });
+
+  return {
+    gridFsId: uploadStream.id.toString(),
+    fileSize,
+    pageCount,
+  };
+}
+
+/**
+ * Retrieve buffer directly from MongoDB GridFS by ID.
+ */
+export async function getBufferFromGridFS(gridFsId: string): Promise<Buffer | null> {
+  try {
+    await connectToDatabase();
+    if (!gridFsId || !mongoose.Types.ObjectId.isValid(gridFsId)) return null;
+
+    const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db!, { bucketName: 'pdfs' });
+    const downloadStream = bucket.openDownloadStream(new mongoose.Types.ObjectId(gridFsId));
+
+    const chunks: Buffer[] = [];
+    return await new Promise<Buffer | null>((resolve) => {
+      downloadStream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      downloadStream.on('end', () => resolve(Buffer.concat(chunks)));
+      downloadStream.on('error', (err) => {
+        console.warn('GridFS download error:', err);
+        resolve(null);
+      });
+    });
+  } catch (err) {
+    console.warn('Could not read from GridFS:', err);
+    return null;
+  }
+}
+
+/**
  * Store the original raw PDF file byte-for-byte across all available persistent tiers.
  */
 export async function storeOriginalPdf(
@@ -76,8 +140,18 @@ export async function storeOriginalPdf(
   const storageKey = `pdf_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
   let pdfPath = `/uploads/${safeName}`;
+  let gridFsId: string | undefined = undefined;
 
-  // 1. Local disk persistent storage (public/uploads)
+  // 1. Primary: Store in MongoDB GridFS (permanent serverless storage across Vercel instances)
+  try {
+    const gridResult = await uploadBufferToGridFS(buffer, originalFileName);
+    gridFsId = gridResult.gridFsId;
+    pdfPath = `/api/notes/file?gridFsId=${gridFsId}`;
+  } catch (gridErr) {
+    console.warn('GridFS storage upload note:', gridErr);
+  }
+
+  // 2. Local disk persistent storage (public/uploads)
   try {
     const publicUploads = path.join(process.cwd(), 'public', 'uploads');
     if (!fs.existsSync(publicUploads)) {
@@ -88,7 +162,7 @@ export async function storeOriginalPdf(
     // Read-only filesystem (e.g. Vercel production)
   }
 
-  // 2. Data directory persistent storage (data/uploads)
+  // 3. Data directory persistent storage (data/uploads)
   try {
     const dataUploads = path.join(process.cwd(), 'data', 'uploads');
     if (!fs.existsSync(dataUploads)) {
@@ -99,7 +173,7 @@ export async function storeOriginalPdf(
     // Read-only filesystem
   }
 
-  // 3. Serverless temp storage (/tmp/uploads)
+  // 4. Serverless temp storage (/tmp/uploads)
   try {
     const tmpUploads = path.join('/tmp', 'uploads');
     if (!fs.existsSync(tmpUploads)) {
@@ -110,7 +184,7 @@ export async function storeOriginalPdf(
     // Temp storage failure
   }
 
-  // 4. Supabase Storage (if configured in environment)
+  // 5. Supabase Storage (if configured in environment)
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const isRealSupabase = supabaseUrl && !supabaseUrl.includes('demo.supabase.co');
@@ -144,6 +218,7 @@ export async function storeOriginalPdf(
   return {
     storageKey,
     pdfPath,
+    gridFsId,
     fileSize,
     pageCount,
     originalFileName,
@@ -159,6 +234,34 @@ export async function getOriginalPdfBuffer(
   requestedPath?: string | null,
   fallbackName?: string | null
 ): Promise<Buffer | null> {
+  // 1. Check if requestedPath contains gridFsId
+  if (requestedPath) {
+    const gridMatch = requestedPath.match(/[?&]gridFsId=([a-f0-9]{24})/i);
+    if (gridMatch && gridMatch[1]) {
+      const gridBuf = await getBufferFromGridFS(gridMatch[1]);
+      if (gridBuf && gridBuf.length > 0 && isValidPdfBuffer(gridBuf)) {
+        return gridBuf;
+      }
+    }
+
+    if (mongoose.Types.ObjectId.isValid(requestedPath)) {
+      const gridBuf = await getBufferFromGridFS(requestedPath);
+      if (gridBuf && gridBuf.length > 0 && isValidPdfBuffer(gridBuf)) {
+        return gridBuf;
+      }
+    }
+  }
+
+  if (fallbackName) {
+    const gridMatch = fallbackName.match(/[?&]gridFsId=([a-f0-9]{24})/i);
+    if (gridMatch && gridMatch[1]) {
+      const gridBuf = await getBufferFromGridFS(gridMatch[1]);
+      if (gridBuf && gridBuf.length > 0 && isValidPdfBuffer(gridBuf)) {
+        return gridBuf;
+      }
+    }
+  }
+
   const candidatePaths: string[] = [];
 
   if (requestedPath) {

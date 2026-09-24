@@ -60,6 +60,7 @@ export interface Note {
   language: string;
   tags: string[];
   pdf_path: string;
+  gridfs_id?: string;
   storage_key?: string;
   original_filename?: string;
   mime_type?: string;

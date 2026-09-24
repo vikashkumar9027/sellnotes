@@ -89,29 +89,47 @@ export async function POST(request: NextRequest) {
       `${title.trim()} handwritten study notes for ${subject.trim()} (${course.trim()}), ${university.trim()}. Verified exam preparation material.`;
 
     const pdfFile = formData.get('pdf_file') as File | null;
-    if (!pdfFile || typeof pdfFile === 'string' || pdfFile.size === 0) {
+    let storedPdfPath = (formData.get('pdf_path') as string) || '';
+    let storedGridFsId = (formData.get('gridfs_id') as string) || '';
+    let storedStorageKey = (formData.get('storage_key') as string) || '';
+    let storedFileSize = Number(formData.get('file_size')) || 0;
+    let storedOriginalFileName =
+      (formData.get('original_filename') as string) ||
+      (formData.get('file_name') as string) ||
+      'handwritten-notes.pdf';
+    let mimeType = 'application/pdf';
+    let finalPageCount = page_count || 1;
+
+    if (storedPdfPath || storedGridFsId) {
+      // File was uploaded via chunked upload (avoids 413 payload limit on Vercel)
+      finalPageCount = page_count > 0 ? page_count : 1;
+    } else if (pdfFile && typeof pdfFile !== 'string' && pdfFile.size > 0) {
+      // Process PDF file binary directly
+      storedOriginalFileName = pdfFile.name || 'handwritten-notes.pdf';
+      mimeType = pdfFile.type || 'application/pdf';
+      const bytes = await pdfFile.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+
+      if (!isValidPdfBuffer(buffer)) {
+        return NextResponse.json(
+          { error: 'Uploaded file is not a valid PDF document. Please upload a genuine PDF file.' },
+          { status: 400 }
+        );
+      }
+
+      // Store PDF file in vault (GridFS & local/tmp tiers)
+      const stored = await storeOriginalPdf(buffer, storedOriginalFileName);
+      storedPdfPath = stored.pdfPath;
+      storedGridFsId = stored.gridFsId || '';
+      storedStorageKey = stored.storageKey;
+      storedFileSize = stored.fileSize;
+      finalPageCount = stored.pageCount > 0 ? stored.pageCount : (page_count || 1);
+    } else {
       return NextResponse.json(
         { error: 'Please select a genuine PDF document to upload.' },
         { status: 400 }
       );
     }
-
-    // 3. Process PDF file binary
-    const originalFileName = pdfFile.name || 'handwritten-notes.pdf';
-    const mimeType = pdfFile.type || 'application/pdf';
-    const bytes = await pdfFile.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    if (!isValidPdfBuffer(buffer)) {
-      return NextResponse.json(
-        { error: 'Uploaded file is not a valid PDF document. Please upload a genuine PDF file.' },
-        { status: 400 }
-      );
-    }
-
-    // 4. Store PDF file in vault
-    const stored = await storeOriginalPdf(buffer, originalFileName);
-    const finalPageCount = stored.pageCount > 0 ? stored.pageCount : (page_count || 1);
 
     // 5. Generate clean URL slug
     const cleanTitle = title.trim();
@@ -148,12 +166,13 @@ export async function POST(request: NextRequest) {
       tags,
       price: is_free ? 0 : price,
       is_free,
-      pdf_path: stored.pdfPath,
-      storage_key: stored.storageKey,
-      original_filename: originalFileName,
+      pdf_path: storedPdfPath,
+      gridfs_id: storedGridFsId,
+      storage_key: storedStorageKey,
+      original_filename: storedOriginalFileName,
       mime_type: mimeType,
       page_count: finalPageCount,
-      file_size: stored.fileSize,
+      file_size: storedFileSize,
       status: 'approved',
     });
 

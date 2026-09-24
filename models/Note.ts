@@ -17,6 +17,7 @@ export interface INote extends Document {
   price: number;
   is_free: boolean;
   pdf_path: string;
+  gridfs_id?: string;
   storage_key?: string;
   original_filename?: string;
   mime_type?: string;
@@ -105,6 +106,10 @@ const NoteSchema = new Schema<INote>(
     pdf_path: {
       type: String,
       required: [true, 'PDF file path or URL is required'],
+    },
+    gridfs_id: {
+      type: String,
+      default: '',
     },
     storage_key: {
       type: String,
